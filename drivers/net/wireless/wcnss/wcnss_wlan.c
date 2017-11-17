@@ -129,10 +129,10 @@ static DEFINE_SPINLOCK(reg_spinlock);
 #define WCNSS_TSTBUS_CTRL_WRFIFO	(0x04 << 1)
 #define WCNSS_TSTBUS_CTRL_RDFIFO	(0x05 << 1)
 #define WCNSS_TSTBUS_CTRL_CTRL		(0x07 << 1)
-#define WCNSS_TSTBUS_CTRL_AXIM_CFG0	(0x00 << 6)
-#define WCNSS_TSTBUS_CTRL_AXIM_CFG1	(0x01 << 6)
-#define WCNSS_TSTBUS_CTRL_CTRL_CFG0	(0x00 << 12)
-#define WCNSS_TSTBUS_CTRL_CTRL_CFG1	(0x01 << 12)
+#define WCNSS_TSTBUS_CTRL_AXIM_CFG0	(0x00 << 8)
+#define WCNSS_TSTBUS_CTRL_AXIM_CFG1	(0x01 << 8)
+#define WCNSS_TSTBUS_CTRL_CTRL_CFG0	(0x00 << 28)
+#define WCNSS_TSTBUS_CTRL_CTRL_CFG1	(0x01 << 28)
 
 #define MSM_PRONTO_CCPU_BASE			0xfb205050
 #define CCU_PRONTO_INVALID_ADDR_OFFSET		0x08
@@ -202,6 +202,7 @@ static DEFINE_SPINLOCK(reg_spinlock);
 #define	WCNSS_VBATT_LEVEL_IND         (WCNSS_CTRL_MSG_START + 8)
 #define	WCNSS_BUILD_VER_REQ           (WCNSS_CTRL_MSG_START + 9)
 #define	WCNSS_BUILD_VER_RSP           (WCNSS_CTRL_MSG_START + 10)
+#define	WCNSS_PM_CONFIG_REQ           (WCNSS_CTRL_MSG_START + 11)
 
 /* max 20mhz channel count */
 #define WCNSS_MAX_CH_NUM			45
@@ -241,11 +242,14 @@ static struct wcnss_pmic_dump wcnss_pmic_reg_dump[] = {
 	{"LVS1", 0x060},
 };
 
-#ifdef CONFIG_HUAWEI_WIFI
-#define NVBIN_FILE "wlan/prima/WCNSS_hw_wlan_nv.bin"
-#else
+static int wcnss_notif_cb(struct notifier_block *this, unsigned long code,
+				void *ss_handle);
+
+static struct notifier_block wnb = {
+	.notifier_call = wcnss_notif_cb,
+};
+
 #define NVBIN_FILE "wlan/prima/WCNSS_qcom_wlan_nv.bin"
-#endif
 
 /*
  * On SMD channel 4K of maximum data can be transferred, including message
@@ -373,6 +377,7 @@ static struct {
 	struct delayed_work wcnss_work;
 	struct delayed_work vbatt_work;
 	struct work_struct wcnssctrl_version_work;
+	struct work_struct wcnss_pm_config_work;
 	struct work_struct wcnssctrl_nvbin_dnld_work;
 	struct work_struct wcnssctrl_rx_work;
 	struct wake_lock wcnss_wake_lock;
@@ -586,31 +591,35 @@ void wcnss_pronto_log_debug_regs(void)
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_SPARE_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_PMU_SPARE %08x\n", reg);
+	pr_info_ratelimited("%s:  PRONTO_PMU_SPARE %08x\n", __func__, reg);
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_COM_CPU_CBCR_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_PMU_COM_CPU_CBCR %08x\n", reg);
+	pr_info_ratelimited("%s:  PRONTO_PMU_COM_CPU_CBCR %08x\n",
+						__func__, reg);
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_COM_AHB_CBCR_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_PMU_COM_AHB_CBCR %08x\n", reg);
+	pr_info_ratelimited("%s:  PRONTO_PMU_COM_AHB_CBCR %08x\n",
+						__func__, reg);
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_CFG_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_PMU_CFG %08x\n", reg);
+	pr_info_ratelimited("%s:  PRONTO_PMU_CFG %08x\n", __func__, reg);
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_COM_CSR_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_PMU_COM_CSR %08x\n", reg);
+	pr_info_ratelimited("%s:  PRONTO_PMU_COM_CSR %08x\n",
+						__func__, reg);
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_SOFT_RESET_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_PMU_SOFT_RESET %08x\n", reg);
+	pr_info_ratelimited("%s:  PRONTO_PMU_SOFT_RESET %08x\n",
+						__func__, reg);
 
 	reg_addr = penv->pronto_saw2_base + PRONTO_SAW2_SPM_STS_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_SAW2_SPM_STS %08x\n", reg);
+	pr_info_ratelimited("%s: PRONTO_SAW2_SPM_STS %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_pll_base + PRONTO_PLL_STATUS_OFFSET;
 	reg = readl_relaxed(reg_addr);
@@ -622,11 +631,13 @@ void wcnss_pronto_log_debug_regs(void)
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_COM_GDSCR_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("PRONTO_PMU_COM_GDSCR %08x\n", reg);
+	pr_info_ratelimited("%s:  PRONTO_PMU_COM_GDSCR %08x\n",
+						__func__, reg);
 	reg >>= 31;
 
 	if (!reg) {
-		pr_err("Cannot log, Pronto common SS is power collapsed\n");
+		pr_info_ratelimited("%s:  Cannot log, Pronto common SS is power collapsed\n",
+				__func__);
 		return;
 	}
 	reg &= ~(PRONTO_PMU_COM_GDSCR_SW_COLLAPSE
@@ -640,31 +651,31 @@ void wcnss_pronto_log_debug_regs(void)
 
 	reg_addr = penv->pronto_a2xb_base + A2XB_CFG_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("A2XB_CFG_OFFSET %08x\n", reg);
+	pr_info_ratelimited("%s: A2XB_CFG_OFFSET %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_a2xb_base + A2XB_INT_SRC_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("A2XB_INT_SRC_OFFSET %08x\n", reg);
+	pr_info_ratelimited("%s: A2XB_INT_SRC_OFFSET %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_a2xb_base + A2XB_ERR_INFO_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("A2XB_ERR_INFO_OFFSET %08x\n", reg);
+	pr_info_ratelimited("%s: A2XB_ERR_INFO_OFFSET %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_ccpu_base + CCU_PRONTO_INVALID_ADDR_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("CCU_CCPU_INVALID_ADDR %08x\n", reg);
+	pr_info_ratelimited("%s: CCU_CCPU_INVALID_ADDR %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_ccpu_base + CCU_PRONTO_LAST_ADDR0_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("CCU_CCPU_LAST_ADDR0 %08x\n", reg);
+	pr_info_ratelimited("%s: CCU_CCPU_LAST_ADDR0 %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_ccpu_base + CCU_PRONTO_LAST_ADDR1_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("CCU_CCPU_LAST_ADDR1 %08x\n", reg);
+	pr_info_ratelimited("%s: CCU_CCPU_LAST_ADDR1 %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_ccpu_base + CCU_PRONTO_LAST_ADDR2_OFFSET;
 	reg = readl_relaxed(reg_addr);
-	pr_err("CCU_CCPU_LAST_ADDR2 %08x\n", reg);
+	pr_info_ratelimited("%s: CCU_CCPU_LAST_ADDR2 %08x\n", __func__, reg);
 
 	tst_addr = penv->pronto_a2xb_base + A2XB_TSTBUS_OFFSET;
 	tst_ctrl_addr = penv->pronto_a2xb_base + A2XB_TSTBUS_CTRL_OFFSET;
@@ -674,21 +685,24 @@ void wcnss_pronto_log_debug_regs(void)
 	reg = reg | WCNSS_TSTBUS_CTRL_EN | WCNSS_TSTBUS_CTRL_RDFIFO;
 	writel_relaxed(reg, tst_ctrl_addr);
 	reg = readl_relaxed(tst_addr);
-	pr_err("Read data FIFO testbus %08x\n", reg);
+	pr_info_ratelimited("%s:  Read data FIFO testbus %08x\n",
+					__func__, reg);
 
 	/*  command FIFO */
 	reg = 0;
 	reg = reg | WCNSS_TSTBUS_CTRL_EN | WCNSS_TSTBUS_CTRL_CMDFIFO;
 	writel_relaxed(reg, tst_ctrl_addr);
 	reg = readl_relaxed(tst_addr);
-	pr_err("Command FIFO testbus %08x\n", reg);
+	pr_info_ratelimited("%s:  Command FIFO testbus %08x\n",
+					__func__, reg);
 
 	/*  write data FIFO */
 	reg = 0;
 	reg = reg | WCNSS_TSTBUS_CTRL_EN | WCNSS_TSTBUS_CTRL_WRFIFO;
 	writel_relaxed(reg, tst_ctrl_addr);
 	reg = readl_relaxed(tst_addr);
-	pr_err("Rrite data FIFO testbus %08x\n", reg);
+	pr_info_ratelimited("%s:  Rrite data FIFO testbus %08x\n",
+					__func__, reg);
 
 	/*   AXIM SEL CFG0 */
 	reg = 0;
@@ -696,7 +710,8 @@ void wcnss_pronto_log_debug_regs(void)
 				WCNSS_TSTBUS_CTRL_AXIM_CFG0;
 	writel_relaxed(reg, tst_ctrl_addr);
 	reg = readl_relaxed(tst_addr);
-	pr_err("AXIM SEL CFG0 testbus %08x\n", reg);
+	pr_info_ratelimited("%s:  AXIM SEL CFG0 testbus %08x\n",
+					__func__, reg);
 
 	/*   AXIM SEL CFG1 */
 	reg = 0;
@@ -704,7 +719,8 @@ void wcnss_pronto_log_debug_regs(void)
 				WCNSS_TSTBUS_CTRL_AXIM_CFG1;
 	writel_relaxed(reg, tst_ctrl_addr);
 	reg = readl_relaxed(tst_addr);
-	pr_err("AXIM SEL CFG1 testbus %08x\n", reg);
+	pr_info_ratelimited("%s:  AXIM SEL CFG1 testbus %08x\n",
+					__func__, reg);
 
 	/*   CTRL SEL CFG0 */
 	reg = 0;
@@ -712,7 +728,8 @@ void wcnss_pronto_log_debug_regs(void)
 		WCNSS_TSTBUS_CTRL_CTRL_CFG0;
 	writel_relaxed(reg, tst_ctrl_addr);
 	reg = readl_relaxed(tst_addr);
-	pr_err("CTRL SEL CFG0 testbus %08x\n", reg);
+	pr_info_ratelimited("%s:  CTRL SEL CFG0 testbus %08x\n",
+					__func__, reg);
 
 	/*   CTRL SEL CFG1 */
 	reg = 0;
@@ -720,7 +737,7 @@ void wcnss_pronto_log_debug_regs(void)
 		WCNSS_TSTBUS_CTRL_CTRL_CFG1;
 	writel_relaxed(reg, tst_ctrl_addr);
 	reg = readl_relaxed(tst_addr);
-	pr_err("CTRL SEL CFG1 testbus %08x\n", reg);
+	pr_info_ratelimited("%s:  CTRL SEL CFG1 testbus %08x\n", __func__, reg);
 
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_WLAN_BCR_OFFSET;
@@ -731,21 +748,22 @@ void wcnss_pronto_log_debug_regs(void)
 
 	reg_addr = penv->msm_wcnss_base + PRONTO_PMU_WLAN_AHB_CBCR_OFFSET;
 	reg3 = readl_relaxed(reg_addr);
-	pr_err("PMU_WLAN_AHB_CBCR %08x\n", reg3);
+	pr_info_ratelimited("%s:  PMU_WLAN_AHB_CBCR %08x\n", __func__, reg3);
 
 	if ((reg & PRONTO_PMU_WLAN_BCR_BLK_ARES) ||
 		(reg2 & PRONTO_PMU_WLAN_GDSCR_SW_COLLAPSE) ||
 		(!(reg4 & PRONTO_PMU_CPU_AHB_CMD_RCGR_ROOT_EN)) ||
 		(reg3 & PRONTO_PMU_WLAN_AHB_CBCR_CLK_OFF) ||
 		(!(reg3 & PRONTO_PMU_WLAN_AHB_CBCR_CLK_EN))) {
-		pr_err("Cannot log, wlan domain is power collapsed\n");
+		pr_info_ratelimited("%s:  Cannot log, wlan domain is power collapsed\n",
+				__func__);
 		return;
 	}
 
 	msleep(50);
 
 	reg = readl_relaxed(penv->wlan_tx_phy_aborts);
-	pr_err("WLAN_TX_PHY_ABORTS %08x\n", reg);
+	pr_info_ratelimited("%s: WLAN_TX_PHY_ABORTS %08x\n", __func__, reg);
 
 	reg_addr = penv->pronto_mcu_base + MCU_CBR_CCAHB_ERR_OFFSET;
 	reg = readl_relaxed(reg_addr);
@@ -796,10 +814,10 @@ void wcnss_pronto_log_debug_regs(void)
 	pr_err("MCU_FDBR_FDAHB_TIMEOUT %08x\n", reg);
 
 	reg = readl_relaxed(penv->wlan_brdg_err_source);
-	pr_err("WLAN_BRDG_ERR_SOURCE %08x\n", reg);
+	pr_info_ratelimited("%s: WLAN_BRDG_ERR_SOURCE %08x\n", __func__, reg);
 
 	reg = readl_relaxed(penv->wlan_tx_status);
-	pr_err("WLAN_TXP_STATUS %08x\n", reg);
+	pr_info_ratelimited("%s: WLAN_TX_STATUS %08x\n", __func__, reg);
 
 	reg = readl_relaxed(penv->alarms_txctl);
 	pr_err("ALARMS_TXCTL %08x\n", reg);
@@ -937,6 +955,7 @@ static void wcnss_smd_notify_event(void *data, unsigned int event)
 		pr_debug("wcnss: opening WCNSS SMD channel :%s",
 				WCNSS_CTRL_CHANNEL);
 		schedule_work(&penv->wcnssctrl_version_work);
+		schedule_work(&penv->wcnss_pm_config_work);
 
 		break;
 
@@ -973,10 +992,6 @@ wcnss_pronto_gpios_config(struct device *dev, bool enable)
 	int i, j;
 	int WCNSS_WLAN_NUM_GPIOS = 5;
 
-#ifdef CONFIG_HUAWEI_WIFI
-    pr_info("wcnss: %s enter;\n", __func__);
-#endif
-
 	for (i = 0; i < WCNSS_WLAN_NUM_GPIOS; i++) {
 		int gpio = of_get_gpio(dev->of_node, i);
 		if (enable) {
@@ -990,9 +1005,6 @@ wcnss_pronto_gpios_config(struct device *dev, bool enable)
 			gpio_free(gpio);
 	}
 
-#ifdef CONFIG_HUAWEI_WIFI
-	pr_info("wcnss: %s exit,rc:%d;line:%d;\n", __func__,rc,__LINE__);
-#endif
 	return rc;
 
 fail:
@@ -1000,9 +1012,6 @@ fail:
 		int gpio = of_get_gpio(dev->of_node, i);
 		gpio_free(gpio);
 	}
-#ifdef CONFIG_HUAWEI_WIFI
-	pr_info("wcnss: %s exit,rc:%d;line:%d;\n", __func__,rc,__LINE__);
-#endif
 	return rc;
 }
 
@@ -1011,10 +1020,6 @@ wcnss_gpios_config(struct resource *gpios_5wire, bool enable)
 {
 	int i, j;
 	int rc = 0;
-
-#ifdef CONFIG_HUAWEI_WIFI
-    pr_info("wcnss: %s enter;\n", __func__);
-#endif
 
 	for (i = gpios_5wire->start; i <= gpios_5wire->end; i++) {
 		if (enable) {
@@ -1027,17 +1032,11 @@ wcnss_gpios_config(struct resource *gpios_5wire, bool enable)
 			gpio_free(i);
 	}
 
-#ifdef CONFIG_HUAWEI_WIFI
-	pr_info("wcnss: %s exit,rc:%d;line:%d;\n", __func__,rc,__LINE__);
-#endif
 	return rc;
 
 fail:
 	for (j = i-1; j >= gpios_5wire->start; j--)
 		gpio_free(j);
-#ifdef CONFIG_HUAWEI_WIFI
-	pr_info("wcnss: %s exit,rc:%d;line:%d;\n", __func__,rc,__LINE__);
-#endif
 	return rc;
 }
 
@@ -1812,6 +1811,52 @@ static void wcnss_send_version_req(struct work_struct *worker)
 	return;
 }
 
+static void wcnss_send_pm_config(struct work_struct *worker)
+{
+	struct smd_msg_hdr *hdr;
+	unsigned char *msg = NULL;
+	int rc, prop_len;
+	u32 *payload;
+
+	if (!of_find_property(penv->pdev->dev.of_node,
+				"qcom,wcnss-pm", &prop_len))
+		return;
+
+	msg = kmalloc((sizeof(struct smd_msg_hdr) + prop_len), GFP_KERNEL);
+
+	if (NULL == msg) {
+		pr_err("wcnss: %s: failed to allocate memory\n", __func__);
+		return;
+	}
+
+	payload = (u32 *)(msg + sizeof(struct smd_msg_hdr));
+
+	prop_len /= sizeof(int);
+
+	rc = of_property_read_u32_array(penv->pdev->dev.of_node,
+			"qcom,wcnss-pm", payload, prop_len);
+	if (rc < 0) {
+		pr_err("wcnss: property read failed\n");
+		kfree(msg);
+		return;
+	}
+
+	pr_debug("%s:size=%d: <%d, %d, %d, %d, %d>\n", __func__,
+			prop_len, *payload, *(payload+1), *(payload+2),
+			*(payload+3), *(payload+4));
+
+	hdr = (struct smd_msg_hdr *)msg;
+	hdr->msg_type = WCNSS_PM_CONFIG_REQ;
+	hdr->msg_len = sizeof(struct smd_msg_hdr) + prop_len;
+
+	rc = wcnss_smd_tx(msg, hdr->msg_len);
+	if (rc < 0)
+		pr_err("wcnss: smd tx failed\n");
+
+	kfree(msg);
+	return;
+}
+
 static DECLARE_RWSEM(wcnss_pm_sem);
 
 static void wcnss_nvbin_dnld(void)
@@ -2171,10 +2216,6 @@ wcnss_trigger_config(struct platform_device *pdev)
 	int has_pronto_hw = of_property_read_bool(pdev->dev.of_node,
 									"qcom,has-pronto-hw");
 
-#ifdef CONFIG_HUAWEI_WIFI
-	pr_info("wcnss: %s:enter;has_48mhz_xo:%d;\n", __func__,has_48mhz_xo);
-#endif
-
 	if (of_property_read_u32(pdev->dev.of_node,
 			"qcom,wlan-rx-buff-count", &penv->wlan_rx_buff_count)) {
 		penv->wlan_rx_buff_count = WCNSS_DEF_WLAN_RX_BUFF_COUNT;
@@ -2250,6 +2291,7 @@ wcnss_trigger_config(struct platform_device *pdev)
 	}
 	INIT_WORK(&penv->wcnssctrl_rx_work, wcnssctrl_rx_handler);
 	INIT_WORK(&penv->wcnssctrl_version_work, wcnss_send_version_req);
+	INIT_WORK(&penv->wcnss_pm_config_work, wcnss_send_pm_config);
 	INIT_WORK(&penv->wcnssctrl_nvbin_dnld_work, wcnss_nvbin_dnld_main);
 
 	wake_lock_init(&penv->wcnss_wake_lock, WAKE_LOCK_SUSPEND, "wcnss");
@@ -2381,6 +2423,10 @@ wcnss_trigger_config(struct platform_device *pdev)
 	} while (pil_retry++ < WCNSS_MAX_PIL_RETRY && IS_ERR(penv->pil));
 
 	if (pil_retry >= WCNSS_MAX_PIL_RETRY) {
+		wcnss_reset_intr();
+		if (penv->wcnss_notif_hdle)
+			subsys_notif_unregister_notifier(penv->wcnss_notif_hdle,
+				&wnb);
 		penv->pil = NULL;
 		goto fail_pil;
 	}
@@ -2437,9 +2483,6 @@ fail_power:
 		wcnss_gpios_config(penv->gpios_5wire, false);
 fail_gpio_res:
 	penv = NULL;
-#ifdef CONFIG_HUAWEI_WIFI
-	pr_info("wcnss: %s exit,line:%d\n", __func__,__LINE__);
-#endif
 	return ret;
 }
 
@@ -2577,11 +2620,6 @@ static int wcnss_notif_cb(struct notifier_block *this, unsigned long code,
 	return NOTIFY_DONE;
 }
 
-static struct notifier_block wnb = {
-	.notifier_call = wcnss_notif_cb,
-};
-
-
 static const struct file_operations wcnss_node_fops = {
 	.owner = THIS_MODULE,
 	.open = wcnss_node_open,
@@ -2599,10 +2637,6 @@ static int __devinit
 wcnss_wlan_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-
-#ifdef CONFIG_HUAWEI_WIFI
-	pr_info("wcnss: %s enter;\n", __func__);
-#endif
 
 	/* verify we haven't been called more than once */
 	if (penv) {

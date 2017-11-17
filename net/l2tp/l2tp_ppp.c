@@ -1346,6 +1346,7 @@ static int pppol2tp_setsockopt(struct socket *sock, int level, int optname,
 	struct pppol2tp_session *ps;
 	int val;
 	int err;
+
 	if (level != SOL_PPPOL2TP)
 		return -EINVAL;
 
@@ -1471,8 +1472,10 @@ static int pppol2tp_getsockopt(struct socket *sock, int level,
 	int val, len;
 	int err;
 	struct pppol2tp_session *ps;
+
 	if (level != SOL_PPPOL2TP)
 		return -EINVAL;
+
 	if (get_user(len, (int __user *) optlen))
 		return -EFAULT;
 
