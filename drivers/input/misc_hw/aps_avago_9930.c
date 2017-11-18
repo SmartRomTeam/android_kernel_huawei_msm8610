@@ -732,18 +732,18 @@ Light_init:
 	     lux = luxcalculation(cdata, irdata);
 	     
 	}
-	 if (lux >= 0) 
-	 {    
-
-	      lux = lux < PX_SUNLIGHT_DEFAULT? lux : PX_SUNLIGHT_DEFAULT; 
-	      light_data_value = lux;
-
-	 }
-	 else
-	{
+	 if(cdata<0 || irdata < 0 )
+	{ 
 		/* don't report, this is invalid lux value */
 		lux_is_valid = 0;
+		pr_err("%s,read als register vlue error\n",__func__);
+		lux = 0;
 	}
+	else
+{
+lux = luxcalculation(cdata, irdata);
+
+}
        if (lux_is_valid) 
        {
                 input_report_abs(aps->input_dev, ABS_LIGHT,lux );
