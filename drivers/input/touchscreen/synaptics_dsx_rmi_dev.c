@@ -27,7 +27,8 @@
 #include <linux/gpio.h>
 #include <linux/uaccess.h>
 #include <linux/cdev.h>
-#include <linux/input/synaptics_dsx.h>
+/*Add for aging test*/
+#include <linux/synaptics_dsx.h>
 #include "synaptics_dsx_i2c.h"
 
 #define CHAR_DEVICE_NAME "rmi"
@@ -75,10 +76,11 @@ struct rmidev_data {
 	struct rmidev_handle *rmi_dev;
 };
 
+/*Add for CTS*/
 static struct bin_attribute attr_data = {
 	.attr = {
 		.name = "data",
-		.mode = (S_IRUGO | S_IWUGO),
+		.mode = (S_IRUGO | S_IWUSR|S_IWGRP),
 	},
 	.size = 0,
 	.read = rmidev_sysfs_data_show,
@@ -86,10 +88,10 @@ static struct bin_attribute attr_data = {
 };
 
 static struct device_attribute attrs[] = {
-	__ATTR(open, S_IWUGO,
+	__ATTR(open, S_IWUSR|S_IWGRP,
 			synaptics_rmi4_show_error,
 			rmidev_sysfs_open_store),
-	__ATTR(release, S_IWUGO,
+	__ATTR(release, S_IWUSR|S_IWGRP,
 			synaptics_rmi4_show_error,
 			rmidev_sysfs_release_store),
 	__ATTR(attn_state, S_IRUGO,

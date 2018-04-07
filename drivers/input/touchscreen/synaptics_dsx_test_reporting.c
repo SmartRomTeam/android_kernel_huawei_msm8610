@@ -418,9 +418,8 @@ static short FullRawCapLowerLimit[TOUCH_TX_DEFAULT*TOUCH_RX_DEFAULT] = {
 1502,1512,1497,1498,826,1499,1398,1372,1356,1172,1395,1453,1519,1506,1507,1494,1489,1504,1496,1520,1512,1517,1505,1436,
 1454,1462,1446,1445,826,1448,1382,1412,1333,1144,1396,1399,1600,1563,1558,1537,1524,1531,1532,1549,1535,1543,1515,560
 }; //test_limit value*1000
-/* modify HighResistanceLimit */
-static short HighResistanceUpperLimit[3] = {1407,450,-528};
-static short HighResistanceLowerLimit[3] = {0,0,-2697};
+static short HighResistanceUpperLimit[3] = {1407,179,-528};
+static short HighResistanceLowerLimit[3] = {17,24,-2697};
 static int RxDiagonalUpperLimit = 1100;
 static int RxDiagonalLowerLimit = 900;
 static int RxOthersUpperLimit = 250;
@@ -2445,14 +2444,10 @@ static void mmi_rawimage_report(unsigned char *buffer)
 
 rawimage_test_end:
 	if (TestResult)
-	{
 	    strcat(g_mmi_buf_f54test_result,"1P-");
-	}
 	else
-	{
 	    strcat(g_mmi_buf_f54test_result,"1F-");
-	    tp_log_info("%s  mmi_rawimage_report fail\n", __func__);
-	}
+	
 	kfree(DataArray);
 	return;
 }
@@ -2542,7 +2537,6 @@ static void mmi_RxtoRxshort1_report(unsigned char* buffer)
 	} else{
 		TestResult = TEST_FAILED;
 	 	//strcat(g_mmi_buf_f54test_result,"4F-");
-		tp_log_info("%s  mmi_RxtoRxshort1_report fail\n", __func__);
 	}
 
 	return;
@@ -2562,7 +2556,6 @@ static void mmi_RxtoRxshort2_report(unsigned char* buffer)
 	} else{
 		TestResult = TEST_FAILED;
 	 	strcat(g_mmi_buf_f54test_result,"4F-");
-		tp_log_info("%s  mmi_RxtoRxshort2_report fail\n", __func__);
 	}
 
 	return;
@@ -2589,14 +2582,9 @@ static void mmi_txtotx_short_report(unsigned char* buffer)
    	}
 
 	if (TestResult)
-	{
 	    strcat(g_mmi_buf_f54test_result,"2P-");
-	}
 	else
-	{
 	    strcat(g_mmi_buf_f54test_result,"2F-");
-	    tp_log_info("%s  mmi_txtotx_short_report fail\n", __func__);
-	}
 	
 	return;
 }
@@ -2628,8 +2616,7 @@ static void mmi_txtoground_short_report(unsigned char* buffer, size_t report_siz
 	else
 	{
 		TestResult = TEST_FAILED;
-		strcat(g_mmi_buf_f54test_result,"3F-");
-		tp_log_info("%s  mmi_txtoground_short_report fail\n", __func__);
+		 strcat(g_mmi_buf_f54test_result,"3F-");	
 	}
 
 	return;
@@ -2654,9 +2641,8 @@ static void mmi_maxmincapacitance_report(unsigned char* buffer)
 		TestResult = TEST_PASS;
 		strcat(g_mmi_buf_f54test_result,"5P-");
 	}else{
-		TestResult = TEST_FAILED;
+		TestResult = TEST_FAILED;;		
 		strcat(g_mmi_buf_f54test_result,"5F-");
-		tp_log_info("%s  mmi_maxmincapacitance_report fail,max:%d,min:%d\n", __func__, max, min);
 	}
 
 	sprintf(buf, " %d %d", max, min);
@@ -2683,10 +2669,7 @@ static void mmi_highresistance_report(unsigned char* buffer)
 
 		if ((HighResistanceResult[i] > HighResistanceUpperLimit[i]) ||
 			(HighResistanceResult[i] < HighResistanceLowerLimit[i]))
-			{
-				TestResult = TEST_FAILED;
-				tp_log_info("%s  mmi_highresistance_report fail,HighResistanceResult[%d]:%d\n", __func__, i, HighResistanceResult[i]);
-			}
+			TestResult = TEST_FAILED;
 		sprintf(buf, "%d ", HighResistanceResult[i]);
 		strncat(g_mmi_highresistance_report, buf, sizeof(buf));
 	}
@@ -2863,7 +2846,6 @@ static ssize_t synaptics_rmi4_f54_mmi_test_store(struct device *dev,
 
 	sysfs_is_busy = true;
 	f54->rmi4_data->reset_device(rmi4_data);
-	tp_log_info("%s end ", __func__);
 	return count;
 
 exit:

@@ -55,8 +55,7 @@ module_param_named(synaptics_dsx_debug_mask, synaptics_dsx_debug_mask, int, 0664
 #define LCD_Y_DEFAULT 800
 #define LCD_ALL_DEFAULT 854
 #define USE_WAKEUP_GESTURE 1
-/*delete some lines*/
-#define REPORT_GESTURE_LOCUS 1
+#define REPORT_GESTURE_LOCUS 0
 
 
 #if USE_WAKEUP_GESTURE
@@ -67,12 +66,13 @@ module_param_named(synaptics_dsx_debug_mask, synaptics_dsx_debug_mask, int, 0664
 #define F11_2D_DATA39_OFFSET 55
 #define F51_CUSTOM_DATA24_OFFSET 24
 
-/*delete some lines*/
+#if REPORT_GESTURE_LOCUS
 #define F51_LOCUS_DATA_NUM 24
 #define F51_LOCUS_DATA_LENS 4
 #define F51_LETTER_LOCUS_NUM 6
 #define F51_LINEAR2_LOCUS_NUM 4
 #define F51_LINEAR_LOCUS_NUM 2
+#endif/*REPORT_GESTURE_LOCUS*/
 
 /*Gesture register(F11_2D_data38) value*/
 #define DOUBLE_CLICK_WAKEUP  (1<<0)
@@ -81,20 +81,18 @@ module_param_named(synaptics_dsx_debug_mask, synaptics_dsx_debug_mask, int, 0664
 #define SPECIFIC_LETTER_DETECTED  (1<<6)
 
 /*Linear esture register(F51_custom_data0) value*/
-/*Change reg define for diff fw*/
 #define LINEAR_SLIDE_LEFT_TO_RIGHT 0X41
 #define LINEAR_SLIDE_RIGHT_TO_LEFT 0X42
 #define LINEAR_SLIDE_TOP_TO_BOTTOM 0X44
 #define LINEAR_SLIDE_BOTTOM_TO_TOP 0X48
 #define LINEAR_SLIDE_TOP_TO_BOTTOM2 0X80
-/* Reg defination for cirlce gesture of clockwise and counterclockwise */
-#define CIRCLE_SLIDE_CLOCKWISE 0x10
-#define CIRCLE_SLIDE_COUNTERCLOCKWISE 0x20
+
 /*Letter gesture register(F11_2D_DATA39 (04)/01) value*/
-#define SPECIFIC_LETTER_c 0x63
-#define SPECIFIC_LETTER_e 0x65
-#define SPECIFIC_LETTER_m 0x6D
-#define SPECIFIC_LETTER_w 0x77
+#define SPECIFIC_LETTER_c 0X63
+#define SPECIFIC_LETTER_e 0X65
+#define SPECIFIC_LETTER_m 0X6D
+#define SPECIFIC_LETTER_w 0X77
+
 #define GESTURE_TIMER_INTERVAL  HZ //jiffies 1S
 
 enum synaptics_gesture_num {
@@ -128,19 +126,11 @@ enum synaptics_gesture_num {
 										(APP_ENABLE_LINEAR)|\
 										(APP_ENABLE_GESTURE(GESTURE_CIRCLE_SLIDE))|\
 										(APP_ENABLE_LETTERS))
-#define IS_GESTURE_ENABLE(gesture, var) (APP_ENABLE_GESTURE((gesture)) & (var))
-/*Use to switch between reduce mode and gesture mode*/
-#define F11_REDUCE_MODE (1 << 0)
-#define F11_GESTURE_MODE (1 << 2)
+	
 #endif/*USE_WAKEUP_GESTURE*/
 
 static struct device *core_dev_ptr = NULL;
-/*For gestures the max report point num is 6*/
-#define MAX_LOTUS_NUM  6
-u32 easywake_position[MAX_LOTUS_NUM] = {0};
-#define DOUBLE_TAP_ZONE_BYTES  6
-/*store the default double tap aone defined by fw */
-u8 double_tap_zone[DOUBLE_TAP_ZONE_BYTES+1] = {0};
+
 #ifdef USE_IRQ_THREAD
 #else
 static struct workqueue_struct *synaptics_wq;
@@ -207,7 +197,6 @@ static struct kobject *board_properties_kobj;
 #define SENSOR_SLEEP (1 << 0)
 #define NO_SLEEP_OFF (0 << 2)
 #define NO_SLEEP_ON (1 << 2)
-/*delete some lines*/
 #define CONFIGURED (1 << 7)
 
 static int synaptics_rmi4_i2c_read(struct synaptics_rmi4_data *rmi4_data,
@@ -267,11 +256,6 @@ static ssize_t synaptics_easy_wakeup_supported_gestures_show(struct device *dev,
 static ssize_t synaptics_easy_wakeup_gesture_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
 static ssize_t synaptics_easy_wakeup_gesture_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size);
-/*For apk to read gesture locus point position*/
-static ssize_t synaptics_easy_wakeup_position_show(struct device *dev,
-		struct device_attribute *attr, char *buf);
-static ssize_t synaptics_easy_wakeup_position_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size);
 
 struct synaptics_rmi4_f01_device_status {
@@ -587,33 +571,7 @@ static ssize_t synaptics_rmi4_f01_flashprog_show(struct device *dev,
 	int retval;
 	struct synaptics_rmi4_f01_device_status device_status;
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
-	/*for ESD test*/
-	unsigned char data[MAX_INTR_REGISTERS + 1];
-	unsigned char device_data = 0;
-	unsigned char no_sleep_setting = rmi4_data->no_sleep_setting;
-	unsigned char glove_mode = 0;
-	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f11_data_base_addr+F11_2D_DATA28_OFFSET,
-			&device_data,
-			sizeof(device_data));
-	if (retval < 0) {
-		tp_log_err("%s: Failed to read reg(0x%04x),retval=%d\n",
-				__func__,rmi4_data->f11_data_base_addr+F11_2D_DATA28_OFFSET,retval);
-		return retval;
-	}
-	tp_log_debug("%s:palm device_data = %d",__func__, device_data);
-	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f01_data_base_addr,
-			data,
-			rmi4_data->num_of_intr_regs + 1);
-	tp_log_debug("%s: f01_data[0] = %d ,retval = %d \n",__func__,data[0],retval);
-	tp_log_debug("%s: f01_data[1] = %d ,retval = %d \n",__func__,data[1],retval);
-	if (retval < 0) {
-		dev_err(&rmi4_data->i2c_client->dev,
-				"%s: Failed to read interrupt status\n",
-				__func__);
-		return retval;
-	}
+
 	retval = synaptics_rmi4_i2c_read(rmi4_data,
 			rmi4_data->f01_data_base_addr,
 			device_status.data,
@@ -624,26 +582,11 @@ static ssize_t synaptics_rmi4_f01_flashprog_show(struct device *dev,
 				__func__, retval);
 		return retval;
 	}
-	/* Add debug info for glove mode */
-	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f51_ctrl_base_addr,
-			&glove_mode,
-			sizeof(glove_mode));
-	if (retval < 0) {
-		dev_err(&(rmi4_data->input_dev->dev),
-				"%s: Failed to read glove mode\n",
-				__func__);
-	}
-	tp_log_debug("%s: glove_mode=%d", __func__, glove_mode);
-	return snprintf(buf, PAGE_SIZE, "flash_prog=%u\n"
-		"f01_data[0]=%d \n"
-		"f01_data[1]=%d\n"
-		"palm_data=%d\n"
-		"no_sleep_setting=%d\n"
-		"glove_mode=%d\n",
-		device_status.flash_prog,
-		data[0],data[1],device_data,no_sleep_setting,glove_mode);
+
+	return snprintf(buf, PAGE_SIZE, "%u\n",
+			device_status.flash_prog);
 }
+
 static ssize_t synaptics_rmi4_0dbutton_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -807,76 +750,13 @@ static ssize_t synaptics_easy_wakeup_gesture_store(struct device *dev,
 	tp_log_debug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
 	pm_runtime_put(&rmi4_data->i2c_client->dev);
 	tp_log_debug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
-	if (ret < 0)
+
+	if (ret)
 		return ret;
+
 	return size;
 }
 
-/*
- *For apk to read gesture locus point position:
- *Each point was represent by 8 hex numbers
- *with the 4 MSB hex number for position_x and
- *the 4 LSB hex number for position_y
- *There is no space between point positions
- */
-static ssize_t synaptics_easy_wakeup_position_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
-	ssize_t ret;
-	char temp[9] = {0};
-	int i = 0;
-
-	mutex_lock(&rmi4_data->rmi4_sysfs_mutex);
-	for(i = 0;i < MAX_LOTUS_NUM;i ++)
-	{
-		tp_log_info("%s: easywake_position[%d] = %d:\n",
-						__func__, i,easywake_position[i]);
-		ret = snprintf(temp, (sizeof(u32)*2+1), "%08x",easywake_position[i]);
-		strncat(buf, temp ,(sizeof(u32)*2+1));
-	}
-	strncat(buf,"\n",1);
-	strcat(buf, "\0");
-	mutex_unlock(&rmi4_data->rmi4_sysfs_mutex);
-	ret = (strlen(buf)+1);
-
-	return ret;
-}
-
-static ssize_t synaptics_easy_wakeup_position_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	return 0;
-}
-
-static ssize_t hw_synaptics_easy_wakeup_position_show(struct kobject *dev,
-		struct kobj_attribute *attr, char *buf)
-{
-	struct device *cdev = core_dev_ptr;
-	if (!cdev){
-		tp_log_err("%s: device is null \n", __func__);
-		return -EINVAL;
-	}
-	return synaptics_easy_wakeup_position_show(cdev, NULL, buf);
-}
-
-static ssize_t hw_synaptics_easy_wakeup_position_store(struct kobject *dev,
-		struct kobj_attribute *attr, const char *buf, size_t size)
-{
-	struct device *cdev = core_dev_ptr;
-	if (!cdev){
-		tp_log_err("%s: device is null \n", __func__);
-		return -EINVAL;
-	}
-	return synaptics_easy_wakeup_position_store(cdev, NULL, buf, size);
-}
-
-
-static struct kobj_attribute easy_wakeup_position = {
-	.attr = {.name = "easy_wakeup_position", .mode = (S_IRUGO | S_IWUSR | S_IWGRP)},
-	.show = hw_synaptics_easy_wakeup_position_show,
-	.store = hw_synaptics_easy_wakeup_position_store,
-};
 static ssize_t hw_synaptics_easy_wakeup_gesture_show(struct kobject *dev,
 		struct kobj_attribute *attr, char *buf)
 {
@@ -914,22 +794,8 @@ static ssize_t synaptics_glove_func_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
-	unsigned char device_ctrl;
 	ssize_t ret;
 
-	pm_runtime_get_sync(&rmi4_data->i2c_client->dev);
-	ret = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f51_ctrl_base_addr,
-			&device_ctrl,
-			sizeof(device_ctrl));
-	if (ret < 0) {
-		dev_err(&(rmi4_data->input_dev->dev),
-				"%s: Failed to read glove mode\n",
-				__func__);
-	} else{
-		tp_log_info("%s: glove mode=%d", __func__, device_ctrl);
-	}
-	pm_runtime_put(&rmi4_data->i2c_client->dev);
 	mutex_lock(&rmi4_data->rmi4_sysfs_mutex);
 
 	tp_log_debug("%s: glove_enabled=%d", __func__, rmi4_data->glove_enabled);
@@ -937,41 +803,25 @@ static ssize_t synaptics_glove_func_show(struct device *dev,
 	mutex_unlock(&rmi4_data->rmi4_sysfs_mutex);
 	return ret;
 }
-static int set_glove_mode(struct synaptics_rmi4_data *rmi4_data,enum syanptics_glove_mode mode)
-{
-	int ret;
-	unsigned char data = mode;
-	mutex_lock(&rmi4_data->rmi4_glove_mutex);
-	ret = synaptics_rmi4_i2c_write(rmi4_data,
-			rmi4_data->f51_ctrl_base_addr,
-			&data,
-			sizeof(data));
-	if (ret < 0) {
-		tp_log_err("%s: Failed to set glove mode=%d!\n",
-				__func__,data);
-		mutex_unlock(&rmi4_data->rmi4_glove_mutex);
-		return ret;
-	} else{
-		tp_log_info("%s: glove in %d mode!\n",
-				__func__,data);
-	}
-	mutex_unlock(&rmi4_data->rmi4_glove_mutex);
-	return 0;
-}
+
 static ssize_t synaptics_glove_func_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	unsigned long value;
 	int ret;
-
+	unsigned char device_ctrl;
 
 	ret = kstrtoul(buf, 10, &value);
-	/* Normalized input value */
-	tp_log_debug("%s: value=%d", __func__, (unsigned int)value);
 	if (ret < 0){
 		tp_log_err("%s: kstrtoul error,ret=%d", __func__,ret);
 		return ret;
+	}
+
+	tp_log_debug("%s: value=%d", __func__, (unsigned int)value);
+	if (value < 0 || value > true) {
+		tp_log_err("%s: Invalid value:%ld", __func__, value);
+		return -EINVAL;
 	}
 
 	tp_log_debug("%s: glove_enabled=%d", __func__, rmi4_data->glove_enabled);
@@ -980,39 +830,40 @@ static ssize_t synaptics_glove_func_store(struct device *dev,
 	pm_runtime_get_sync(&rmi4_data->i2c_client->dev);
 	tp_log_debug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
 
-	if (value > 0)
+	mutex_lock(&rmi4_data->rmi4_sysfs_mutex);
+	if (true == value)
 	{
-		if (true == rmi4_data->holster_enabled)
-		{
-			/*TP will only response to glove in holster mode*/
-			ret = set_glove_mode(rmi4_data,SYSTEM_LOCKED_TO_GLOVE_MODE);
-		}
-		else
-		{
-			/*TP will response to finger and glove,with finger priority*/
-			ret = set_glove_mode(rmi4_data,SYSTEM_START_IN_SKIN_MODE);
-		}
 		rmi4_data->glove_enabled = RMI4_GLOV_FUNC_ENABLED;
+		device_ctrl = SYSTEM_START_IN_GLOVE_MODE;
 	}
 	else
 	{
-		/*TP will only response to finger*/
-		ret = set_glove_mode(rmi4_data,SYSTEM_LOCKED_TO_SKIN_MODE);
 		rmi4_data->glove_enabled = RMI4_GLOV_FUNC_DISABLED;
+		device_ctrl = SYSTEM_LOCKED_TO_SKIN_MODE;
 	}
 	tp_log_debug("%s: glove_enabled=%d", __func__, rmi4_data->glove_enabled);
+	mutex_unlock(&rmi4_data->rmi4_sysfs_mutex);
 
-
+	ret = synaptics_rmi4_i2c_write(rmi4_data,
+			rmi4_data->f51_ctrl_base_addr,
+			&device_ctrl,
+			sizeof(device_ctrl));
+	if (ret < 0) {
+		dev_err(&(rmi4_data->input_dev->dev),
+				"%s: Failed to enter glove mode\n",
+				__func__);
+	} 
 
 	tp_log_debug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
 	pm_runtime_put(&rmi4_data->i2c_client->dev);
 	tp_log_debug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
 
-	if (ret < 0)
+	if (ret)
 		return ret;
 
 	return size;
 }
+
 static ssize_t hw_glove_func_show(struct kobject *dev,
 		struct kobj_attribute *attr, char *buf)
 {
@@ -1034,253 +885,8 @@ static ssize_t hw_glove_func_store(struct kobject *dev,
 	}
 	return synaptics_glove_func_store(cdev, NULL, buf, size);
 }
-/*touch window get point location*/
-static struct holster_mode synap_holster_info = {0,0,0,0,0};
-static struct holster_mode double_tap_info = {0,0,0,0,0};
-/*
- * This window zone is defined in f11_ctrl reg,from F11_2D_CTRL92(01)/00 to (01)/05;
- * The 6 bytes is:<x0_LSB><y0_LSB><y0_MSB+x0_MSB><x1_LSB><y1_LSB><y1_MSB+x1_MSB>;
- * The 6 bytes is used to limit double-tap zone and holster window zone,so that we should change it
- * when mode is switch between double-tap gesture mode and holster mode.
- */
-static int set_effective_window(struct synaptics_rmi4_data *rmi4_data,struct holster_mode *effective_window_info)
-{
-	int ret = 0;
-	unsigned char f11_2d_ctrl92[DOUBLE_TAP_ZONE_BYTES + 1] = {0};//record the zone read from/write to TP register
-	unsigned char effective_window[DOUBLE_TAP_ZONE_BYTES + 1] = {0};//new zone to be written
-	int i = 0;
-	int x0 = effective_window_info->top_left_x0;
-	int y0 = effective_window_info->top_left_y0;
-	int x1 = effective_window_info->bottom_right_x1;
-	int y1 = effective_window_info->bottom_right_y1;
-	int x_lcd = rmi4_data->board->lcd_x;
-	int y_lcd_all = rmi4_data->board->lcd_all;
-	int max_x = rmi4_data->sensor_max_x;
-	int max_y = rmi4_data->sensor_max_y;
-	/* Transform LCD resolution to TP resolution*/
-	effective_window[1] = (char)(x0*max_x/x_lcd);
-	effective_window[2] = (char)(y0*max_y/y_lcd_all);
-	effective_window[3] = (char)(((u16)(y0*max_y/y_lcd_all) & ~MASK_8BIT)>>4 |
-								((u16)(x0*max_x/x_lcd) & ~MASK_8BIT)>>8);
-	effective_window[4] = (char)(x1*max_x/x_lcd);
-	effective_window[5] = (char)(y1*max_y/y_lcd_all);
-	effective_window[6] = (char)(((u16)(y1*max_y/y_lcd_all) & ~MASK_8BIT)>>4 |
-								((u16)(x1*max_x/x_lcd) & ~MASK_8BIT)>>8);
-	mutex_lock(&rmi4_data->rmi4_window_mutex);
-	ret = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f11_ctrl_base_addr + F11_2D_CTRL92_OFFSET,
-			&f11_2d_ctrl92[0],
-			sizeof(f11_2d_ctrl92));
-	if (ret < 0)
-	{
-		tp_log_err("%s:double_tap_zone read error!ret = %d\n",__func__,ret);
-		mutex_unlock(&rmi4_data->rmi4_window_mutex);
-		return ret;
-	}
-	for(i = 1;i < (DOUBLE_TAP_ZONE_BYTES + 1);i ++)
-	{
-		f11_2d_ctrl92[i] = effective_window[i];
-		tp_log_debug("%s:new effective_window[%d] = %d\n",__func__,i, effective_window[i]);
-	}
-	/* Write window zone to F11_2D_CTRL92(01)/00~(01)/05*/
-	ret = synaptics_rmi4_i2c_write(rmi4_data,
-			rmi4_data->f11_ctrl_base_addr + F11_2D_CTRL92_OFFSET,
-			&f11_2d_ctrl92[0],
-			sizeof(f11_2d_ctrl92));
-	if (ret < 0){
-		tp_log_err("%s:new effective_window write error!ret = %d\n",__func__,ret);
-	}else{
-		tp_log_info("%s: new effective_window is written!\n", __func__);
-	}
-	mutex_unlock(&rmi4_data->rmi4_window_mutex);
-	return ret;
-}
-/*
- * Use to define double-tap gesture zone that read from dtsi
-*/
-static int huawei_init_double_tap_zone(struct synaptics_rmi4_data *rmi4_data)
-{
-	int x0 = rmi4_data->board->dtz_x0;
-	int y0 = rmi4_data->board->dtz_y0;
-	int x1 = rmi4_data->board->dtz_x1;
-	int y1 = rmi4_data->board->dtz_y1;
-	if ((x0 == 0) || (y0 == 0) || (x1 == 0) || (y1 == 0))
-	{
-		tp_log_err("%s:double_tap_zone invalid!\n",__func__);
-		return -1;
-	}
-	/* init double_tap window info*/
-	double_tap_info.top_left_x0 = x0;
-	double_tap_info.top_left_y0 = y0;
-	double_tap_info.bottom_right_x1 = x1;
-	double_tap_info.bottom_right_y1 = y1;
-	tp_log_debug("%s: double_tap_zone is initialized!\n", __func__);
-	return 0;
-}
-/*
- * If holster mode is enabled,TP will only response to certain
- * holster window zone defined by set_effective_window();
- * or it will response to whole area as usual when disabled.
-*/
-static int set_holster_mode(struct synaptics_rmi4_data *rmi4_data,enum syanptics_holster_flags flag)
-{
-	int ret;
-	unsigned char data = flag;
-	/*Write holster mode reg*/
-	mutex_lock(&rmi4_data->rmi4_holster_mutex);
-	ret = synaptics_rmi4_i2c_write(rmi4_data,
-			rmi4_data->f51_ctrl_base_addr + F51_CUSTOM_CTRL63_OFFSET,
-			&data,
-			sizeof(data));
-	if (ret < 0) {
-		tp_log_err("%s: Failed to change holster mode\n",
-				__func__);
-		mutex_unlock(&rmi4_data->rmi4_holster_mutex);
-		return ret;
-	}
-	mutex_unlock(&rmi4_data->rmi4_holster_mutex);
-	return 0;
-}
 
 
-static ssize_t synaptics_holster_func_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf,"%ld %d %d %d %d\n", synap_holster_info.holster_enable, synap_holster_info.top_left_x0,
-				synap_holster_info.top_left_y0, synap_holster_info.bottom_right_x1, synap_holster_info.bottom_right_y1);
-}
-static ssize_t synaptics_holster_func_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
-	int ret;
-	int enable;
-	int x0 = 0;
-	int y0 = 0;
-	int x1 = 0;
-	int y1 = 0;
-
-	ret = sscanf(buf, "%d %d %d %d %d",&enable, &x0, &y0, &x1, &y1);
-	if (!ret) {
-		tp_log_err("sscanf return invaild :%d\n", ret);
-		ret = -EINVAL;
-		goto out;
-	}
-	tp_log_debug("%s:sscanf value is enable=%d, (%d,%d), (%d,%d)\n",__func__, enable, x0, y0, x1, y1);
-
-	if (enable && ((x0 < 0) || (y0 < 0) || (x1 <= x0) || (y1 <= y0))) {
-		tp_log_err("%s:invalid value is %d (%d,%d), (%d,%d)\n",__func__, enable, x0, y0, x1, y1);
-		ret = -EINVAL;
-		goto out;
-	}
-
-	/* init holster window info*/
-	synap_holster_info.top_left_x0 = x0;
-	synap_holster_info.top_left_y0 = y0;
-	synap_holster_info.bottom_right_x1 = x1;
-	synap_holster_info.bottom_right_y1 = y1;
-	synap_holster_info.holster_enable = enable;
-
-	tp_log_vdebug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
-	pm_runtime_get_sync(&rmi4_data->i2c_client->dev);
-	tp_log_vdebug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
-
-	if (!enable)
-	{
-		/*Disable holster mode*/
-		ret = set_holster_mode(rmi4_data,RMI4_HOLSTER_FUNC_DISABLED);
-		if (ret < 0) {
-			tp_log_err("%s: Failed to exit holster mode\n",
-					__func__);
-			goto exit;
-		} else{
-			rmi4_data->holster_enabled = false;
-			tp_log_info("%s: holster is Disabled!\n", __func__);
-	}
-
-		/*
-		 * Change glove mode:
-		 * If glove has been enabled before holster was covered,
-		 * we should enable glove again to mode 0 to make sure
-		 * that glove will still work after holster is removed.
-		*/
-		if(rmi4_data->glove_enabled == RMI4_GLOV_FUNC_ENABLED){
-			/*TP will response to finger and glove,with finger default*/
-			ret = set_glove_mode(rmi4_data,SYSTEM_START_IN_SKIN_MODE);
-		} else {
-			/*TP will only response to finger*/
-			ret = set_glove_mode(rmi4_data,SYSTEM_LOCKED_TO_SKIN_MODE);
-		}
-		if (ret < 0) {
-			tp_log_err("%s: Failed to set glove mode!ret=%d\n",
-					__func__,ret);
-			goto exit;
-		}
-
-	} else {
-
-		/* Write holster window zone to F11_2D_CTRL92(01)/00~(01)/05*/
-		ret = set_effective_window(rmi4_data,&synap_holster_info);
-		if (ret < 0)
-		{
-			tp_log_err("%s:holster_zwindow_zone write error!ret = %d\n",
-					__func__,ret);
-			goto exit;
-		}
-
-		/*Enable holster mode*/
-		/*TP will only response to certain holster window zone*/
-		ret = set_holster_mode(rmi4_data,RMI4_HOLSTER_FUNC_ENABLED);
-		if (ret < 0) {
-			tp_log_err("%s: Failed to enable holster mode\n",
-					__func__);
-			goto exit;
-		} else {
-		rmi4_data->holster_enabled = true;
-			tp_log_info("%s: holster is Enabled!\n", __func__);
-	}
-		/*Enable glove mode*/
-		/*TP will only response to finger with glove*/
-		ret = set_glove_mode(rmi4_data,SYSTEM_LOCKED_TO_GLOVE_MODE);
-		if (ret < 0) {
-			tp_log_err("%s: Failed to set glove mode!ret=%d\n",
-					__func__,ret);
-			goto exit;
-		} else {
-			tp_log_info("%s: glove is Enabled!\n", __func__);
-		}
-	}
-
-exit:
-	tp_log_vdebug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
-	pm_runtime_put(&rmi4_data->i2c_client->dev);
-	tp_log_vdebug("%s:line%d , rt_counter=%d\n",__func__,__LINE__, rmi4_data->i2c_client->dev.power.usage_count.counter);
-out:
-	if (ret < 0)
-		return ret;
-	return size;
-}
-static ssize_t hw_holster_func_show(struct kobject *dev,
-		struct kobj_attribute *attr, char *buf)
-{
-	struct device *cdev = core_dev_ptr;
-	if (!cdev){
-		tp_log_err("%s: device is null", __func__);
-		return -EINVAL;
-	}
-	return synaptics_holster_func_show(cdev, NULL, buf);
-}
-
-static ssize_t hw_holster_func_store(struct kobject *dev,
-		struct kobj_attribute *attr, const char *buf, size_t size)
-{
-	struct device *cdev = core_dev_ptr;
-	if (!cdev){
-		tp_log_err("%s: device is null", __func__);
-		return -EINVAL;
-	}
-	return synaptics_holster_func_store(cdev, NULL, buf, size);
-}
 static inline ssize_t hw_synaptics_rmi4_store_error(struct kobject *dev,
 		struct kobj_attribute *attr, const char *buf, size_t size)
 {
@@ -1309,18 +915,14 @@ static struct kobj_attribute glove_func = {
 	.show = hw_glove_func_show,
 	.store = hw_glove_func_store,
 };
-/*Normalized name*/
-static struct kobj_attribute holster_func = {
-	.attr = {.name = "holster_touch_window", .mode = (S_IRUGO | S_IWUSR | S_IWGRP)},
-	.show = hw_holster_func_show,
-	.store = hw_holster_func_store,
-};
+
+
+
 static int add_easy_wakeup_interfaces(struct device *dev)
 {
 	int error = 0;
 	struct kobject *properties_kobj;
 	struct kobject *glove_kobj;
-	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 	
 	properties_kobj = tp_get_touch_screen_obj();
 	if( NULL == properties_kobj )
@@ -1328,76 +930,46 @@ static int add_easy_wakeup_interfaces(struct device *dev)
 		tp_log_err("%s: Error, get kobj failed!\n", __func__);
 		return -1;
 	}
-
-	if(0 != rmi4_data->board->easy_wakeup_supported_gestures)
+	
+	/*add the node easy_wakeup_gesture_supported for apk to read*/
+	error = sysfs_create_file(properties_kobj, &easy_wakeup_supported_gestures.attr);
+	if (error)
 	{
-		/*add the node easy_wakeup_gesture_supported for apk to read*/
-		error = sysfs_create_file(properties_kobj, &easy_wakeup_supported_gestures.attr);
-		if (error)
-		{
-			kobject_put(properties_kobj);
-			tp_log_err("%s: synaptics_easy_wakeup_gesture_supported create file error\n", __func__);
-			return -ENODEV;
-		}
-
-		/*add the node easy_wakeup_gesture apk to write*/
-		error = sysfs_create_file(properties_kobj, &easy_wakeup_gesture.attr);
-		if (error)
-		{
-			kobject_put(properties_kobj);
-			tp_log_err("%s: synaptics_easy_wakeup_gesture create file error\n", __func__);
-			return -ENODEV;
-		}
-
-		/*add the node easy_wakeup_position for apk to write*/
-		error = sysfs_create_file(properties_kobj, &easy_wakeup_position.attr);
-		if (error)
-		{
-			kobject_put(properties_kobj);
-			tp_log_err("%s: easy_wakeup_position create file error\n", __func__);
-			return -ENODEV;
-		}
+		kobject_put(properties_kobj);
+		tp_log_err("%s: synaptics_easy_wakeup_gesture_supported create file error\n", __func__);
+		return -ENODEV;
+	}
+	
+	/*add the node easy_wakeup_gesture apk to write*/
+	error = sysfs_create_file(properties_kobj, &easy_wakeup_gesture.attr);
+	if (error)
+	{
+		kobject_put(properties_kobj);
+		tp_log_err("%s: synaptics_easy_wakeup_gesture create file error\n", __func__);
+		return -ENODEV;
 	}
 
-	if(true == rmi4_data->board->glove_supported)
+	glove_kobj = tp_get_glove_func_obj();
+	if( NULL == glove_kobj )
 	{
-		glove_kobj = tp_get_glove_func_obj();
-		if( NULL == glove_kobj )
-		{
-			tp_log_err("%s: Error, get kobj failed!\n", __func__);
-			return -1;
-		}
-
-		/*add the node glove_func/signal_disparity for apk to write*/
+		tp_log_err("%s: Error, get kobj failed!\n", __func__);
+		return -1;
+	}
+	
+	/*add the node glove_func/signal_disparity for apk to write*/
+	error = sysfs_create_file(glove_kobj, &glove_func.attr);
+	if (error)
+	{
+		kobject_put(glove_kobj);
 		error = sysfs_create_file(glove_kobj, &glove_func.attr);
 		if (error)
 		{
 			kobject_put(glove_kobj);
-			error = sysfs_create_file(glove_kobj, &glove_func.attr);
-			if (error)
-			{
-				kobject_put(glove_kobj);
-				tp_log_err("%s: glove_func create file error\n", __func__);
-				return -ENODEV;
-			}
+			tp_log_err("%s: glove_func create file error\n", __func__);
+			return -ENODEV;
 		}
 	}
-	if(true == rmi4_data->board->holster_supported)
-	{
-		/*add the node holster_touch_window for apk to write*/
-		error = sysfs_create_file(properties_kobj, &holster_func.attr);
-		if (error)
-		{
-			kobject_put(properties_kobj);
-			error = sysfs_create_file(properties_kobj, &holster_func.attr);
-			if (error)
-			{
-				kobject_put(properties_kobj);
-				tp_log_err("%s: holster_func create file error\n", __func__);
-				return -ENODEV;
-			}
-		}
-	}
+	
 	return 0;
 }
 static int synaptics_gpio_setup(int gpio, bool configure, int dir, int state)
@@ -1663,8 +1235,6 @@ static int easy_wakeup_gesture_report_locus(struct synaptics_rmi4_data *rmi4_dat
 			return retval;
 		}
 	
-		mutex_lock(&rmi4_data->rmi4_sysfs_mutex);
-		memset(easywake_position,0,sizeof(easywake_position));
 		for(i = 0;i < reprot_gesture_point_num;i ++)
 		{
 			/*
@@ -1672,10 +1242,8 @@ static int easy_wakeup_gesture_report_locus(struct synaptics_rmi4_data *rmi4_dat
 			  *i.e.Point 1 has 4 bytes from [00] to [03] :
 			  * [00] means LSB of x position,[01] means MSB of x position,
 			  * [02] means LSB of y position,[03] means MSB of y position,
-			  * The most points num is 6,point from 1(lower address) to 6(higher address) means:
-			  * 1.beginning 2.end 3.top 4.leftmost 5.bottom 6.rightmost
-			  * The only one exception is the 4 points for GESTURE_SLIDE_T2B2:
-			  * 1.first finger beginning 2.first finger end 3.second finger beginning 4.second finger end 5.NA 6.NA
+			  *The most points num is 6,point from 1(lower address) to 6(higher address) means:
+			  *1.beginning 2.end 3.top 4.leftmost 5.bottom 6.rightmost
 			  */
 			x = ((f51_custom_data[F51_LOCUS_DATA_LENS*i + 1] << 8) | (f51_custom_data[F51_LOCUS_DATA_LENS*i + 0]));
 			y = ((f51_custom_data[F51_LOCUS_DATA_LENS*i + 3] << 8) | (f51_custom_data[F51_LOCUS_DATA_LENS*i + 2]));
@@ -1687,316 +1255,250 @@ static int easy_wakeup_gesture_report_locus(struct synaptics_rmi4_data *rmi4_dat
 			x = x * x_lcd / rmi4_data->sensor_max_x;
 			x = check_scope_x(x,x_lcd);
 			y = y * y_lcd_all / rmi4_data->sensor_max_y;
+	
+			#ifdef TYPE_B_PROTOCOL
+			input_mt_slot(rmi4_data->input_dev, 0);
+			input_mt_report_slot_state(rmi4_data->input_dev,MT_TOOL_FINGER, 1);
+			#endif
+			input_report_key(rmi4_data->input_dev,BTN_TOUCH, 1);
+			input_report_abs(rmi4_data->input_dev,ABS_MT_POSITION_X, x);
+			input_report_abs(rmi4_data->input_dev,ABS_MT_POSITION_Y, y);
+			input_sync(rmi4_data->input_dev);
+			#ifndef TYPE_B_PROTOCOL
+			input_mt_sync(rmi4_data->input_dev);
+			#endif
 			
-			easywake_position[i]=x<<16|y;		
-			tp_log_info("%s: easywake_position[%d] = %d:\n",
-							__func__, i,easywake_position[i]);
-
 			tp_log_debug("%s: Point %d:\n"
 							"x = %d\n"
 							"y = %d\n",
 							__func__, i,x, y);
 		}
-		mutex_unlock(&rmi4_data->rmi4_sysfs_mutex);
+		input_report_key(rmi4_data->input_dev,BTN_TOUCH, 0);
 	}
 	return retval;
 }
 #endif/*REPORT_GESTURE_LOCUS*/
-static void synaptics_rmi_f11_check_and_save(
-	struct synaptics_rmi4_data *rmi4_data,
-	enum synaptics_gesture_num gesture,
-	unsigned int *reprot_gesture_key_value,
-	unsigned int *reprot_gesture_point_num,
-	unsigned int locus_num)
-{
-	if(rmi4_data == NULL)
-		return;
 
-	if (IS_GESTURE_ENABLE(gesture, rmi4_data->easy_wakeup_gesture)) {
-		tp_log_debug("%s:Gesture: %d detected!\n",__func__, gesture);
-		*reprot_gesture_key_value =
-			rmi4_data->board->wakeup_keys->keys[gesture];
-	#if REPORT_GESTURE_LOCUS
-		*reprot_gesture_point_num = locus_num;
-	#endif/*REPORT_GESTURE_LOCUS*/
-	} else {
-		tp_log_debug("%s: TP Gesture: %d not enabled!!\n",__func__, gesture);
-	}
-}
-static int synaptics_rmi_f11_check_char_gesture(
-	struct synaptics_rmi4_data *rmi4_data,
-	unsigned char gesture,
-	unsigned int *reprot_gesture_key_value,
-	unsigned int *reprot_gesture_point_num)
-{
-	switch(gesture) {
-	case SPECIFIC_LETTER_c:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_LETTER_c,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LETTER_LOCUS_NUM);
-		break;
-	case SPECIFIC_LETTER_e:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_LETTER_e,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LETTER_LOCUS_NUM);
-		break;
-	case SPECIFIC_LETTER_m:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_LETTER_m,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LETTER_LOCUS_NUM);
-		break;
-	case SPECIFIC_LETTER_w:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_LETTER_w,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LETTER_LOCUS_NUM);
-		break;
-	default:
-		tp_log_err("%s:unknow letter!f11_2d_data39[6] = 0x%x\n",
-			__func__,gesture);
-		return -1;
-	}
-	return 0;
-}
-/* Change define for function */
-static int synaptics_rmi_f11_check_slide_gesture(
-	struct synaptics_rmi4_data *rmi4_data,
-	unsigned int *reprot_gesture_key_value,
-	unsigned int *reprot_gesture_point_num)
-{
-	int retval;
-	unsigned char f51_custom_data24 = 0;
-	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f51_data_base_addr + F51_CUSTOM_DATA24_OFFSET,
-			&f51_custom_data24,
-			sizeof(f51_custom_data24));
-	if (retval < 0) {
-		tp_log_err("%s:LINEAR_SLIDE read error!retval = %d\n",
-			__func__, retval);
-		return retval;
-	}
-	switch(f51_custom_data24) {
-	case LINEAR_SLIDE_LEFT_TO_RIGHT:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_SLIDE_L2R,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LINEAR_LOCUS_NUM);
-		break;
-	case LINEAR_SLIDE_RIGHT_TO_LEFT:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_SLIDE_R2L,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LINEAR_LOCUS_NUM);
-		break;
-	case LINEAR_SLIDE_TOP_TO_BOTTOM:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_SLIDE_T2B,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LINEAR_LOCUS_NUM);
-		break;
-	case LINEAR_SLIDE_BOTTOM_TO_TOP:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_SLIDE_B2T,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LINEAR_LOCUS_NUM);
-		break;
-	case LINEAR_SLIDE_TOP_TO_BOTTOM2:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_SLIDE_T2B2,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LINEAR2_LOCUS_NUM);
-		break;
-	default:
-		tp_log_debug("%s:unknow LINEAR!f51_custom_data24 = 0x%x\n",
-			__func__,f51_custom_data24);
-		return -1;
-	}
-	return 0;
-}
-static int synaptics_rmi_f11_check_circle_gesture(
-	struct synaptics_rmi4_data *rmi4_data,
-	unsigned int *reprot_gesture_key_value,
-	unsigned int *reprot_gesture_point_num)
-{
-	int retval;
-	unsigned char f51_custom_data24 = 0;
-	if(!(APP_ENABLE_GESTURE(GESTURE_CIRCLE_SLIDE)&rmi4_data->easy_wakeup_gesture))
-	{
-		tp_log_debug("%s:CIRCLE_SLIDE not enabled!",__func__);
-		return -1;
-	}
-	tp_log_debug("%s:CIRCLE_SLIDE detected!",__func__);
-
-	/* This reg show clock or counterclock */
-	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f51_data_base_addr + F51_CUSTOM_DATA24_OFFSET,
-			&f51_custom_data24,
-			sizeof(f51_custom_data24));
-	if (retval < 0) {
-		tp_log_err("%s:CIRCLE_SLIDE read clockwise error!retval = %d\n",
-			__func__, retval);
-		return retval;
-	}
-	switch(f51_custom_data24) {
-	case CIRCLE_SLIDE_COUNTERCLOCKWISE:
-		synaptics_rmi_f11_check_and_save(rmi4_data,
-			GESTURE_CIRCLE_SLIDE,
-			reprot_gesture_key_value,
-			reprot_gesture_point_num,
-			F51_LETTER_LOCUS_NUM);
-		break;
-	case CIRCLE_SLIDE_CLOCKWISE:
-		if (IS_GESTURE_ENABLE(GESTURE_CIRCLE_SLIDE, rmi4_data->easy_wakeup_gesture)) {
-			tp_log_debug("%s:Gesture: %d CLOCKWISE detected!\n",__func__, GESTURE_CIRCLE_SLIDE);
-			*reprot_gesture_key_value =
-				rmi4_data->board->wakeup_keys->keys[GESTURE_SLIDE_T2B2];//use this key to report clockwise
-			#if REPORT_GESTURE_LOCUS
-			*reprot_gesture_point_num = F51_LETTER_LOCUS_NUM;
-			#endif/*REPORT_GESTURE_LOCUS*/
-		} else {
-			tp_log_debug("%s: TP Gesture: %d not enabled!!\n",__func__, GESTURE_CIRCLE_SLIDE);
-		}
-		break;
-	default:
-		tp_log_debug("%s:unknow CIRCLE!f51_custom_data24 = 0x%x\n",
-			__func__,f51_custom_data24);
-		return -1;
-	}
-	return 0;
-}
 static int synaptics_rmi4_f11_gesture_report(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
 	int retval;
 	unsigned char device_data = 0;
-	/* Move to new function */
+	unsigned char f51_custom_data24 = 0;
 	unsigned char f11_2d_data39[9] = {0};
 	unsigned int reprot_gesture_key_value = 0;
 	unsigned long lTimerCur = jiffies;
 	static unsigned long lTimerPre = 0;
 	static unsigned long lTimerNext = 0;
+#if REPORT_GESTURE_LOCUS
 	unsigned int reprot_gesture_point_num = 0;
+#endif/*REPORT_GESTURE_LOCUS*/
 	static int first_int_flag = true;
 
 	
-	if (true == first_int_flag) {
+	if(true == first_int_flag) 
+	{
 		lTimerPre = jiffies;
 		lTimerCur = jiffies;
 		first_int_flag = false;
-		tp_log_debug("%s:Gesture first interrupt!\n",__func__);
+		tp_log_debug("%s:Gesture first interrupt!",__func__);
 	}
 
-	tp_log_debug("%s:lTimerCur = %ld,lTimerPre + lTimerNext = %ld\n",
-			__func__,lTimerCur,(lTimerPre + lTimerNext));
-	if (time_before(lTimerCur, lTimerPre + lTimerNext)) {
-		tp_log_debug("%s:Gesture Timer Interval is less than 1 senond!\n",__func__);
+	tp_log_debug("%s:lTimerCur = %ld,lTimerPre + lTimerNext = %ld",__func__,lTimerCur,(lTimerPre + lTimerNext));
+	if(time_before(lTimerCur, lTimerPre + lTimerNext)) 
+	{
+		tp_log_debug("%s:Gesture Timer Interval is less than 1 senond!",__func__);
 		return 0;
-	} else {
+	}
+	else
+	{
 		lTimerNext = GESTURE_TIMER_INTERVAL;
 		lTimerPre = jiffies;
-		tp_log_debug("%s:lTimerPre + lTimerNext = %ld\n",
-				__func__, (lTimerPre + lTimerNext));
+		tp_log_debug("%s:lTimerPre + lTimerNext = %ld",__func__,(lTimerPre + lTimerNext));
 	}
 
 	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f11_data_base_addr + F11_2D_DATA38_OFFSET,
+			rmi4_data->f11_data_base_addr+F11_2D_DATA38_OFFSET,
 			&device_data,
 			sizeof(device_data));
-	if (retval < 0){
-		tp_log_err("%s:f11_data_base_addr(%d) read error!retval = %d\n",
-				__func__, (rmi4_data->f11_data_base_addr + F11_2D_DATA38_OFFSET),retval);
+	if (retval < 0)
 		return 0;
-	}
 
-	tp_log_vdebug("%s:f11_data_base_addr = %d,device_data = %d\n",
-			__func__, rmi4_data->f11_data_base_addr,device_data);
+	tp_log_vdebug("%s:f11_data_base_addr = %d,device_data = %d",
+							__func__, rmi4_data->f11_data_base_addr,device_data);
 
-	switch(device_data) {
+	switch(device_data)
+	{
 		case DOUBLE_CLICK_WAKEUP:
-			synaptics_rmi_f11_check_and_save(rmi4_data,
-				GESTURE_DOUBLE_CLICK,
-				&reprot_gesture_key_value,
-				&reprot_gesture_point_num,
-				0);
-			//tp_log_err("%s:f11 double_click_wakeup.....zzzzzz\n",__func__);
-			break;
-		case LINEAR_SLIDE_DETECTED:
-			if (!(APP_ENABLE_LINEAR & rmi4_data->easy_wakeup_gesture)) {
-				tp_log_debug("%s:LINEAR_SLIDE not enabled!\n",__func__);
+			if(!(APP_ENABLE_GESTURE(GESTURE_DOUBLE_CLICK)&rmi4_data->easy_wakeup_gesture))
+			{
+				tp_log_debug("%s:@@@DOUBLE_CLICK_WAKEUP not enabled!!@@@",__func__);
 				return 0;
 			}
-			tp_log_debug("%s:LINEAR_SLIDE detected!\n",__func__);
-			/* Move to new function */
-
-			/*check and save slide gesture*/
-			/* Change defination */
-			if (synaptics_rmi_f11_check_slide_gesture(rmi4_data,
-				&reprot_gesture_key_value,
-				&reprot_gesture_point_num)){
+			tp_log_debug("%s:@@@DOUBLE_CLICK_WAKEUP detected!@@@",__func__);
+			reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_DOUBLE_CLICK];
+			#if REPORT_GESTURE_LOCUS
+			reprot_gesture_point_num = 0;
+			#endif/*REPORT_GESTURE_LOCUS*/
+			break;
+		case LINEAR_SLIDE_DETECTED:
+			if(!(APP_ENABLE_LINEAR&rmi4_data->easy_wakeup_gesture))
+			{
+				tp_log_debug("%s:@@@LINEAR_SLIDE not enabled!@@@",__func__);
 				return 0;
+			}
+			tp_log_debug("%s:@@@LINEAR_SLIDE detected!@@@",__func__);
+			retval = synaptics_rmi4_i2c_read(rmi4_data,
+					rmi4_data->f51_data_base_addr+F51_CUSTOM_DATA24_OFFSET,
+					&f51_custom_data24,
+					sizeof(f51_custom_data24));
+			if (retval < 0)
+			{
+				tp_log_err("%s:LINEAR_SLIDE read error!retval = %d",__func__,retval);
+				return 0;
+			}
+			switch(f51_custom_data24)
+			{
+				case LINEAR_SLIDE_LEFT_TO_RIGHT:
+					if(APP_ENABLE_GESTURE(GESTURE_SLIDE_L2R)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@LINEAR_SLIDE_LEFT_TO_RIGHT detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_SLIDE_L2R];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LINEAR_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				case LINEAR_SLIDE_RIGHT_TO_LEFT:
+					if(APP_ENABLE_GESTURE(GESTURE_SLIDE_R2L)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@LINEAR_SLIDE_RIGHT_TO_LEFT detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_SLIDE_R2L];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LINEAR_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				case LINEAR_SLIDE_TOP_TO_BOTTOM:
+					if(APP_ENABLE_GESTURE(GESTURE_SLIDE_T2B)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@LINEAR_SLIDE_TOP_TO_BOTTOM detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_SLIDE_T2B];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LINEAR_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				case LINEAR_SLIDE_BOTTOM_TO_TOP:
+					if(APP_ENABLE_GESTURE(GESTURE_SLIDE_B2T)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@LINEAR_SLIDE_BOTTOM_TO_TOP detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_SLIDE_B2T];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LINEAR_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				case LINEAR_SLIDE_TOP_TO_BOTTOM2:
+					if(APP_ENABLE_GESTURE(GESTURE_SLIDE_T2B2)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@LINEAR_SLIDE_TOP_TO_BOTTOM2 detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_SLIDE_T2B2];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LINEAR2_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				default:
+					tp_log_debug("%s:@@@unknow LINEAR!f51_custom_data24 = 0x%x@@@",__func__,f51_custom_data24);
+					return 0;
 			}
 			break;
 		case CIRCLE_SLIDE_DETECTED:
-			/*parse which circle gesture it is*/
-			if (synaptics_rmi_f11_check_circle_gesture(rmi4_data,
-					&reprot_gesture_key_value,
-				&reprot_gesture_point_num)){
+			if(!(APP_ENABLE_GESTURE(GESTURE_CIRCLE_SLIDE)&rmi4_data->easy_wakeup_gesture))
+			{
+				tp_log_debug("%s:@@@CIRCLE_SLIDE not enabled!@@@",__func__);
 				return 0;
 			}
+			tp_log_debug("%s:@@@CIRCLE_SLIDE detected!@@@",__func__);
+			reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_CIRCLE_SLIDE];
+			#if REPORT_GESTURE_LOCUS
+			reprot_gesture_point_num = F51_LETTER_LOCUS_NUM;
+			#endif/*REPORT_GESTURE_LOCUS*/
 			break;
 		case SPECIFIC_LETTER_DETECTED:
-			if (!(APP_ENABLE_LETTERS&rmi4_data->easy_wakeup_gesture)) {
-				tp_log_debug("%s:SPECIFIC_LETTER not enabled!\n",__func__);
+			if(!(APP_ENABLE_LETTERS&rmi4_data->easy_wakeup_gesture))
+			{
+				tp_log_debug("%s:@@@SPECIFIC_LETTER not enabled!@@@",__func__);
 				return 0;
 			}
-			tp_log_debug("%s:SPECIFIC_LETTER detected!\n",__func__);
+			tp_log_debug("%s:@@@SPECIFIC_LETTER detected!@@@",__func__);
 			retval = synaptics_rmi4_i2c_read(rmi4_data,
 					rmi4_data->f11_data_base_addr+F11_2D_DATA39_OFFSET,
 					&f11_2d_data39[0],
 					sizeof(f11_2d_data39));
-			if (retval < 0) {
-				tp_log_err("%s:SPECIFIC_LETTER read error!retval = %d\n",
-					__func__,retval);
+			if (retval < 0)
+			{
+				tp_log_err("%s:SPECIFIC_LETTER read error!retval = %d",__func__,retval);
 				return 0;
 			}
 
-			tp_log_vdebug("%s: read f11_2d_data39[6] = 0x%x\n",
-				__func__,f11_2d_data39[6]);
+			tp_log_vdebug("%s:###read### f11_2d_data39[6] = 0x%x  ",__func__,f11_2d_data39[6]);
 
-			if (synaptics_rmi_f11_check_char_gesture(rmi4_data,
-				f11_2d_data39[6],
-				&reprot_gesture_key_value,
-				&reprot_gesture_point_num))
-				return 0;
+			switch(f11_2d_data39[6])
+			{
+				case SPECIFIC_LETTER_c:
+					if(APP_ENABLE_GESTURE(GESTURE_LETTER_c)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@SPECIFIC_LETTER_c detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_LETTER_c];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LETTER_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				case SPECIFIC_LETTER_e:
+					if(APP_ENABLE_GESTURE(GESTURE_LETTER_e)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@SPECIFIC_LETTER_e detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_LETTER_e];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LETTER_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				case SPECIFIC_LETTER_m:
+					if(APP_ENABLE_GESTURE(GESTURE_LETTER_m)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@SPECIFIC_LETTER_m detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_LETTER_m];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LETTER_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				case SPECIFIC_LETTER_w:
+					if(APP_ENABLE_GESTURE(GESTURE_LETTER_w)&rmi4_data->easy_wakeup_gesture)
+					{
+						tp_log_debug("%s:@@@SPECIFIC_LETTER_w detected!@@@",__func__);
+						reprot_gesture_key_value = rmi4_data->board->wakeup_keys->keys[GESTURE_LETTER_w];
+						#if REPORT_GESTURE_LOCUS
+						reprot_gesture_point_num = F51_LETTER_LOCUS_NUM;
+						#endif/*REPORT_GESTURE_LOCUS*/
+					}
+					break;
+				default:
+					tp_log_debug("%s:@@@unknow letter!f11_2d_data39[6] = 0x%x@@@",__func__,f11_2d_data39[6]);
+					return 0;
+			}
 			break;
 		default:
-			tp_log_info("%s:unknow gesture detected! device_data=%d\n",__func__ ,device_data);
+			tp_log_debug("%s:@@@unknow gesture detected!",__func__);
 			return 0;
 	}
-
-	/*Gesture detected, report the event.*/
-	if (0 != reprot_gesture_key_value) {
-/*Make sure the position be ready before wake up system*/
-#if REPORT_GESTURE_LOCUS
-		retval = easy_wakeup_gesture_report_locus(rmi4_data,reprot_gesture_point_num);
-		if (retval < 0) {
-			tp_log_err("%s: report locus error!retval = %d",__func__,retval);
-			return 0;
-		}
-#endif/*REPORT_GESTURE_LOCUS*/
-
+	
+	if(0 != reprot_gesture_key_value)
+	{
 /*		input_report_key(rmi4_data->input_dev,KEY_POWER, 1);
 		input_sync(rmi4_data->input_dev);
 		input_report_key(rmi4_data->input_dev,KEY_POWER, 0);
@@ -2007,9 +1509,19 @@ static int synaptics_rmi4_f11_gesture_report(struct synaptics_rmi4_data *rmi4_da
 		input_sync(rmi4_data->input_dev);
 		input_report_key(rmi4_data->input_dev,reprot_gesture_key_value, 0);
 		input_sync(rmi4_data->input_dev);
+
+		#if REPORT_GESTURE_LOCUS
+		retval = easy_wakeup_gesture_report_locus(rmi4_data,reprot_gesture_point_num);
+		if (retval < 0)
+		{
+			tp_log_err("%s: report locus error!retval = %d",__func__,retval);
+			return 0;
+		}
+		#endif/*REPORT_GESTURE_LOCUS*/
 	}
 	return 0;
 }
+
 static int synaptics_rmi4_f11_palm_report(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
@@ -2052,9 +1564,9 @@ static int synaptics_rmi4_f11_palm_report(struct synaptics_rmi4_data *rmi4_data,
 	{
 		tp_log_vdebug("%s:@@@GESTURE_PALM_COVERED not detected!@@@",__func__);
 		palm_is_covered = false;
+		return 0;
 	}
 
-	return 0;
 report_key:
 /*	input_report_key(rmi4_data->input_dev,KEY_POWER, 1);
 	input_sync(rmi4_data->input_dev);
@@ -2721,10 +2233,8 @@ static irqreturn_t synaptics_rmi4_irq(int irq, void *data)
 #if USE_IRQ_THREAD //huawei 11-25
 		synaptics_rmi4_sensor_report(rmi4_data);
 #else //huawei 11-25
-	{
 		disable_irq_nosync(irq);
 		queue_work(synaptics_wq, &rmi4_data->work);
-	}
 #endif //huawei 11-25
 	
 
@@ -3450,20 +2960,6 @@ static int synaptics_rmi4_alloc_fh(struct synaptics_rmi4_fn **fhandler,
  
 	 return 0;
  }
-static int synaptics_rmi4_f54_init(struct synaptics_rmi4_data *rmi4_data,
-		struct synaptics_rmi4_fn_desc *fd,
-		unsigned char page)
-{
-	rmi4_data->f54_query_base_addr = fd->query_base_addr | (page << 8);
-	rmi4_data->f54_ctrl_base_addr = fd->ctrl_base_addr | (page << 8);
-	rmi4_data->f54_data_base_addr = fd->data_base_addr | (page << 8);
-	rmi4_data->f54_cmd_base_addr = fd->cmd_base_addr | (page << 8);
-	tp_log_debug("%s(line%d): rmi4_data->f54_query_base_addr = 0x%x",__func__,__LINE__,rmi4_data->f54_query_base_addr);
-	tp_log_debug("%s(line%d): rmi4_data->f54_ctrl_base_addr = 0x%x",__func__,__LINE__,rmi4_data->f54_ctrl_base_addr);
-	tp_log_debug("%s(line%d): rmi4_data->f54_data_base_addr = 0x%x",__func__,__LINE__,rmi4_data->f54_data_base_addr);
-	tp_log_debug("%s(line%d): rmi4_data->f54_cmd_base_addr = 0x%x",__func__,__LINE__,rmi4_data->f54_cmd_base_addr);
-	return 0;
-}
  /**
  * synaptics_rmi4_query_device()
  *
@@ -3653,15 +3149,8 @@ rescan_pdt:
 				if (retval < 0)
 					return retval;
 				break;
-			case SYNAPTICS_RMI4_F54:
-				tp_log_debug("%s(line%d): SYNAPTICS_RMI4_F54",__func__,__LINE__);
-				tp_log_debug("%s(line%d): rmi_fd.intr_src_count =0x%x",__func__,__LINE__,rmi_fd.intr_src_count);
-				retval = synaptics_rmi4_f54_init(rmi4_data,
-						&rmi_fd, page_number);
-				if (retval < 0)
-					return retval;
-				break;
 			}
+
 			/* Accumulate the interrupt count */
 			intr_count += (rmi_fd.intr_src_count & MASK_3BIT);
 
@@ -3867,12 +3356,6 @@ static int synaptics_rmi4_set_input_dev(struct synaptics_rmi4_data *rmi4_data)
 			__func__);
 		rmi4_data->board->easy_wakeup_supported_gestures = 0;
 	}
-	/* Double tap zone defined in dtsi */
-	retval = huawei_init_double_tap_zone(rmi4_data);
-	if (retval < 0) {
-		tp_log_err( "%s: Error, init double_tap_zone fail!\n",
-			__func__);
-	}
 #endif /*USE_WAKEUP_GESTURE*/
 
 	if (rmi4_data->board->swap_axes) {
@@ -4041,7 +3524,8 @@ err_gpio_irq:
 static int synaptics_rmi4_free_fingers(struct synaptics_rmi4_data *rmi4_data)
 {
 	unsigned char ii;
-	tp_log_info("%s: in \n",__func__);
+
+	tp_log_debug("%s: in \n",__func__);
 #ifdef TYPE_B_PROTOCOL
 	for (ii = 0; ii < rmi4_data->num_of_fingers; ii++) {
 		input_mt_slot(rmi4_data->input_dev, ii);
@@ -4061,7 +3545,8 @@ static int synaptics_rmi4_free_fingers(struct synaptics_rmi4_data *rmi4_data)
 	input_sync(rmi4_data->input_dev);
 
 	rmi4_data->fingers_on_2d = false;
-	tp_log_info("%s: out ",__func__);
+
+	tp_log_debug("%s: out ",__func__);
 	return 0;
 }
 
@@ -4510,38 +3995,6 @@ static void free_wakeup_keys(struct syanptics_wakeup_keys *wakeup_keys)
 	kfree(wakeup_keys);
 }
 #ifdef CONFIG_OF
-/**
- * get_of_u32_val() - get the u32 type value fro the DTSI.
- * @np: device node
- * @name: The DTSI key name
- * @default_value: If the name is not matched, return a default value.
- */
-static u32 get_of_u32_val(struct device_node *np,
-	const char *name,u32 default_val)
-{
-	u32 tmp= 0;
-	int err = 0;
-	err = of_property_read_u32(np, name, &tmp);
-	if (!err)
-		return tmp;
-	else
-		return default_val;
-}
-static void synaptics_print_dtsi_info(struct synaptics_dsx_platform_data *pdata)
-{
-	tp_log_debug("synaptics,product_name=%s\n", pdata->product_name);
-	tp_log_debug("synaptics,reset-gpio=%d\n", pdata->reset_gpio);
-	tp_log_debug("synaptics,lcd-x=%d; lcd-y=%d; lcd-all=%d\n", pdata->lcd_x,pdata->lcd_y,pdata->lcd_all);
-	tp_log_debug("synaptics,reset-on-status=%d power-delay-ms=%d reset-delay-ms=%d reset-active-ms=%d\n",
-					pdata->reset_on_state,pdata->power_delay_ms,pdata->reset_delay_ms,pdata->reset_active_ms);
-	tp_log_debug("synaptics,gesture_enabled=%d; easy_wakeup_supported_gestures=0x%x\n",
-					pdata->gesture_enabled,pdata->easy_wakeup_supported_gestures);
-	tp_log_debug("synaptics,double tap zone=(%d,%d)(%d,%d)\n",
-				pdata->dtz_x0,pdata->dtz_y0,pdata->dtz_x1,pdata->dtz_y1);
-	tp_log_debug("synaptics,glove_enabled=%d\n", pdata->glove_enabled);
-	tp_log_debug("synaptics,fast_relax_gesture=%d\n", pdata->fast_relax_gesture);
-	tp_log_debug("synaptics,pdata->holster_supported=%d\n", pdata->holster_supported);
-}
 static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_platform_data *pdata)
 {
 	//int retval; //TODO: error checking
@@ -4553,32 +4006,73 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 	pdata->x_flip = of_property_read_bool(np, "synaptics,x-flip");
 	pdata->y_flip = of_property_read_bool(np, "synaptics,y-flip");
 	pdata->swap_axes = of_property_read_bool(np, "synaptics,swap-axes");
-	/*
-	*   @About regulator
-	*   "synaptics,vdd","synaptics,vbus","synaptics,reg-en" are moved to synaptics_rmi4_power_on()
-	*   "synaptics,power-gpio" and "synaptics,power-on-status" are deleted.
-	*/
 
+#ifndef CONFIG_HUAWEI_KERNEL
+	/* regulator info */
+	err = of_property_read_string(dev->of_node,"synaptics,vdd", (const char **)&pdata->regulator_vdd);
+	if (err) {
+		tp_log_err("%s: regulator_name error err=%d\n", __func__, err);
+	}
+
+	err = of_property_read_string(dev->of_node,"synaptics,vbus", (const char **)&pdata->regulator_vbus);
+	if (err) {
+		tp_log_err("%s: regulator_name error err=%d\n", __func__, err);
+	}
+
+	pdata->reg_en = of_property_read_bool(np, "synaptics,reg-en");
 	/* reset, irq gpio info */
+#endif /*CONFIG_HUAWEI_KERNEL*/
 
 	pdata->irq_gpio = of_get_named_gpio_flags(np, "synaptics,irq-gpio", 0, NULL);
+#ifndef CONFIG_HUAWEI_KERNEL
+	pdata->irq_flags = IRQF_TRIGGER_LOW;
+#else /*CONFIG_HUAWEI_KERNEL*/
 	pdata->irq_flags = IRQF_TRIGGER_FALLING | IRQF_ONESHOT;
+#endif /*CONFIG_HUAWEI_KERNEL*/
 
+#ifndef CONFIG_HUAWEI_KERNEL
+	if (of_find_property(np, "synaptics,power-gpio", NULL))
+		pdata->power_gpio = of_get_named_gpio_flags(np, "synaptics,power-gpio", 0, NULL);
+	else
+		pdata->power_gpio = -1;
+#endif /*CONFIG_HUAWEI_KERNEL*/
 
-	if (of_find_property(np, "synaptics,reset-gpio", NULL)) {
-		pdata->reset_gpio = of_get_named_gpio_flags(np, "synaptics,reset-gpio",
-			0, NULL);
-	} else {
-		/*invalid reset GPIO*/
+	if (of_find_property(np, "synaptics,reset-gpio", NULL))
+		pdata->reset_gpio = of_get_named_gpio_flags(np, "synaptics,reset-gpio", 0, NULL);
+	else
 		pdata->reset_gpio = -1;
-	}
+
+#ifndef CONFIG_HUAWEI_KERNEL
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,power-on-status", &tmp);
+	if (!err)
+		pdata->power_on_state = tmp;
+	else
+		pdata->power_on_state = 1;
+#endif /*CONFIG_HUAWEI_KERNEL*/
 		
-	/*LCD resolution. Default is WVGA*/
-	pdata->lcd_x = get_of_u32_val(np, "synaptics,lcd-x", LCD_X_DEFAULT);
+#ifdef CONFIG_HUAWEI_KERNEL
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,lcd-x", &tmp);
+	if (!err)
+		pdata->lcd_x = tmp;
+	else
+		pdata->lcd_x = LCD_X_DEFAULT;
 
-	pdata->lcd_y = get_of_u32_val(np, "synaptics,lcd-y", LCD_Y_DEFAULT);
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,lcd-y", &tmp);
+	if (!err)
+		pdata->lcd_y = tmp;
+	else
+		pdata->lcd_y = LCD_Y_DEFAULT;
 
-	pdata->lcd_all = get_of_u32_val(np, "synaptics,lcd-all", LCD_ALL_DEFAULT);
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,lcd-all", &tmp);
+	if (!err)
+		pdata->lcd_all = tmp;
+	else
+		pdata->lcd_all = LCD_ALL_DEFAULT;
+	
 #ifdef ENABLE_VIRTUAL_KEYS
 	err = setup_virtual_keys(np, DRIVER_NAME,&pdata->vkeys);
 	if (err) {
@@ -4592,14 +4086,36 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 		tp_log_err("Unable to read firmware_name\n");			
 		pdata->product_name = "Unknow";
 	}
+#endif /*CONFIG_HUAWEI_KERNEL*/
 
-	pdata->reset_on_state = get_of_u32_val(np, "synaptics,reset-on-status", 0);
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,reset-on-status", &tmp);
+	if (!err)
+		pdata->reset_on_state = tmp;
+	else
+		pdata->reset_on_state = 0;
 
-	pdata->power_delay_ms = get_of_u32_val(np, "synaptics,power-delay-ms", 160);
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,power-delay-ms", &tmp);
+	if (!err)
+		pdata->power_delay_ms = tmp;
+	else
+		pdata->power_delay_ms = 160;
 
-	pdata->reset_delay_ms = get_of_u32_val(np, "synaptics,reset-delay-ms", 10);
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,reset-delay-ms", &tmp);
+	if  (!err)
+		pdata->reset_delay_ms = tmp;
+	else
+		pdata->reset_delay_ms = 10;
 
-	pdata->reset_active_ms = get_of_u32_val(np, "synaptics,reset-active-ms", 100);
+	tmp = 0;
+	err = of_property_read_u32(np, "synaptics,reset-active-ms", &tmp);
+	if (!err)
+		pdata->reset_active_ms = tmp;
+	else
+		pdata->reset_active_ms = 100;
+
 	prop = of_find_property(np, "synaptics,button-map", NULL);
 	if (prop) {
 		pdata->cap_button_map->nbuttons = prop->length / sizeof(tmp);
@@ -4611,36 +4127,28 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 			pdata->cap_button_map->map = NULL;			
 		}
 	}
-	pdata->gesture_enabled = get_of_u32_val(np, "synaptics,gesture_enabled", 0);
-	pdata->easy_wakeup_supported_gestures = get_of_u32_val(np,
-			"synaptics,easy_wakeup_supported_gestures", 0);
+
+	err = of_property_read_u32(np, "synaptics,gesture_enabled", &tmp);
+	if (!err)
+		pdata->gesture_enabled = tmp;
+	
+	err = of_property_read_u32(np, "synaptics,easy_wakeup_supported_gestures", &tmp);
+	if (!err)
+		pdata->easy_wakeup_supported_gestures = (u32)tmp;
+
 	pdata->wakeup_keys = create_and_get_wakeup_keys(np);
 	if (IS_ERR_OR_NULL(pdata->wakeup_keys)) {
 		tp_log_err("%s: Wakeup gesture is not configured!\n", __func__);
 		pdata->wakeup_keys = NULL;
-	} else {
+	}else{
 		/*change to debug*/
 		tp_log_info("%s: Wakeup gesture is configured for %d guestures\n", 
 			__func__,pdata->wakeup_keys->size);
 	}
 
-	/* Double tap zone defined in dtsi  0 means invalid*/
-	pdata->dtz_x0 = get_of_u32_val(np, "huawei,dtz_x0", 0);
-	pdata->dtz_y0 = get_of_u32_val(np, "huawei,dtz_y0", 0);
-	pdata->dtz_x1 = get_of_u32_val(np, "huawei,dtz_x1", 0);
-	pdata->dtz_y1 = get_of_u32_val(np, "huawei,dtz_y1", 0);
 	err = of_property_read_u32(np, "synaptics,glove_enabled", &tmp);
-	if (!err) {
+	if (!err)
 		pdata->glove_enabled = tmp;
-		pdata->glove_supported = true;
-	} else {
-		pdata->glove_supported = false;
-	}
-	pdata->fast_relax_gesture = get_of_u32_val(np, "synaptics,fast_relax_gesture", 0);
-	pdata->holster_supported = (bool)get_of_u32_val(np, "synaptics,holster_supported", 0);
-
-	/*DEBUG: print tp dtsi info*/
-	synaptics_print_dtsi_info(pdata);
 	return 0;
 }
 #else
@@ -4735,8 +4243,15 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 			 if (0 == runtime_count)
 			 {
 				 ret = pm_runtime_get_sync(&rmi4_data->i2c_client->dev);
-				 runtime_count = 1;//in case that fb_callback more than once
-				 tp_log_debug("%s:line%d , runtime_count=%d,ret=%d\n",__func__,__LINE__, runtime_count,ret);
+				 if (ret < 0)
+				 {
+					 tp_log_debug("%s:line%d , runtime_count=%d,ret=%d\n",__func__,__LINE__, runtime_count,ret);
+				 }
+				 else
+				 {
+					 runtime_count = 1;//in case that fb_callback more than once
+					 tp_log_debug("%s:line%d , runtime_count=%d,ret=%d\n",__func__,__LINE__, runtime_count,ret);
+				 }
 			 }
 			 else
 			 {
@@ -4749,8 +4264,15 @@ static int synaptics_rmi4_parse_dt(struct device *dev, struct synaptics_dsx_plat
 			if (1 == runtime_count)
 			{
 				 ret = pm_runtime_put(&rmi4_data->i2c_client->dev);
-				 runtime_count = 0;//in case that fb_callback more than once
-				 tp_log_debug("%s:line%d , runtime_count=%d,ret=%d\n",__func__,__LINE__, runtime_count,ret);
+				 if (ret < 0)
+				 {
+					 tp_log_debug("%s:line%d , runtime_count=%d,ret=%d\n",__func__,__LINE__, runtime_count,ret);
+				 }
+				 else
+				 {
+					 runtime_count = 0;//in case that fb_callback more than once
+					 tp_log_debug("%s:line%d , runtime_count=%d,ret=%d\n",__func__,__LINE__, runtime_count,ret);
+				 }
 			 }
 			 else
 			 {
@@ -4797,7 +4319,6 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 {
 	int retval;
 	unsigned char attr_count;
-/*delete some lines*/
 	struct synaptics_rmi4_data *rmi4_data;
 	struct synaptics_dsx_platform_data *platform_data =
 			client->dev.platform_data;
@@ -4912,9 +4433,6 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 	rmi4_data->easy_wakeup_gesture = false;
 	rmi4_data->sleep_gesture_flag = false;
 	rmi4_data->glove_enabled = platform_data->glove_enabled;
-	rmi4_data->holster_enabled = false;
-	/*record default value from FW*/
-	rmi4_data->fast_relax_normal = 0;
 #endif /*USE_WAKEUP_GESTURE*/
 
 	rmi4_data->i2c_read = synaptics_rmi4_i2c_read;
@@ -4925,9 +4443,7 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 	mutex_init(&(rmi4_data->rmi4_io_ctrl_mutex));
 	mutex_init(&(rmi4_data->rmi4_reset_mutex));
 	mutex_init(&(rmi4_data->rmi4_sysfs_mutex));
-	mutex_init(&(rmi4_data->rmi4_holster_mutex));
-	mutex_init(&(rmi4_data->rmi4_glove_mutex));
-	mutex_init(&(rmi4_data->rmi4_window_mutex));
+
 	i2c_set_clientdata(client, rmi4_data);
 
 	retval = synaptics_rmi4_set_input_dev(rmi4_data);
@@ -4937,7 +4453,6 @@ static int __devinit synaptics_rmi4_probe(struct i2c_client *client,
 				__func__);
 		goto err_set_input_dev;
 	}
-/*delete some lines*/
 
 #if !defined(CONFIG_HAS_EARLYSUSPEND) && defined(CONFIG_FB)
        configure_sleep(rmi4_data);
@@ -5047,13 +4562,12 @@ err_set_input_dev:
 				false, 0, 0);
 	}
 
-#ifndef CONFIG_HUAWEI_KERNEL
 	if (platform_data->power_gpio >= 0) {
 		synaptics_gpio_setup(
 				platform_data->power_gpio,
 				false, 0, 0);
 	}
-#endif /*CONFIG_HUAWEI_KERNEL*/
+
 #if	USE_IRQ_THREAD //huawei 11-25
 #else		
 error_wq_creat_failed:
@@ -5142,13 +4656,12 @@ static int __devexit synaptics_rmi4_remove(struct i2c_client *client)
 				false, 0, 0);
 	}
 
-#ifndef CONFIG_HUAWEI_KERNEL
 	if (platform_data->power_gpio >= 0) {
 		synaptics_gpio_setup(
 				platform_data->power_gpio,
 				false, 0, 0);
 	}
-#endif /*CONFIG_HUAWEI_KERNEL*/
+
 	if (rmi4_data->regulator) {
 		regulator_disable(rmi4_data->regulator);
 		regulator_put(rmi4_data->regulator);
@@ -5251,152 +4764,16 @@ static void synaptics_rmi4_sensor_wake(struct synaptics_rmi4_data *rmi4_data)
 	return;
 }
 #if USE_WAKEUP_GESTURE
-static int synaptics_set_config_reg(struct synaptics_rmi4_data *rmi4_data,unsigned char fast_relax)
-{
-	int retval;
-	unsigned char device_cmd;
-	tp_log_info("%s: in ",__func__);
-	tp_log_debug( "%s:write fast_relax= %d\n", __func__,fast_relax);
-	retval = synaptics_rmi4_i2c_write(rmi4_data,
-			rmi4_data->f54_ctrl_base_addr+F54_ANALOG_CTRL13_OFFSET,
-			&fast_relax,
-			sizeof(fast_relax));
-	if (retval < 0) {
-		tp_log_err("%s: Failed to write reg(0x%04x),retval=%d\n",
-				__func__,rmi4_data->f54_ctrl_base_addr+F54_ANALOG_CTRL13_OFFSET,retval);
-		return retval;
-	}
-	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f54_cmd_base_addr,
-			&device_cmd,
-			sizeof(device_cmd));
-	tp_log_debug( "%s device_cmd = %d\n", __func__,device_cmd);
-	tp_log_debug( "%s f54_cmd_base_addr = %d\n", __func__,rmi4_data->f54_cmd_base_addr);
-	if (retval < 0) {
-		tp_log_err("%s: Failed to read reg(0x%04x),retval=%d\n",
-				__func__,rmi4_data->f54_cmd_base_addr,retval);
-		return retval;
-	}
-	/*write 0100 to f54_cmd_00 will force update reg-value to TP ram */
-	device_cmd = (device_cmd | 0x04);
-	retval = synaptics_rmi4_i2c_write(rmi4_data,
-			rmi4_data->f54_cmd_base_addr,
-			&device_cmd,
-			sizeof(device_cmd));
-	if (retval < 0) {
-		tp_log_err("%s: Failed to write reg(0x%04x),retval=%d\n",
-				__func__,rmi4_data->f54_cmd_base_addr,retval);
-		return retval;
-	}
-	return 0;
-}
-static int synaptics_set_nosleep_mode(struct synaptics_rmi4_data *rmi4_data,unsigned char nosleep)
-{
-	int retval;
-	unsigned char device_ctrl;
-
-	/*Read F01_RMI_CTRL00 to get nosleep mode*/
-	retval = synaptics_rmi4_i2c_read(rmi4_data,
-			rmi4_data->f01_ctrl_base_addr,
-			&device_ctrl,
-			sizeof(device_ctrl));
-	if (retval < 0) {
-		tp_log_err("%s: Failed to read sleep mode\n",
-				__func__);
-		return retval;
-	}
-
-	device_ctrl = (device_ctrl & ~MASK_BIT3);
-	device_ctrl = (device_ctrl | nosleep);
-	/*Write F01_RMI_CTRL00 to set nosleep mode*/
-	retval = synaptics_rmi4_i2c_write(rmi4_data,
-			rmi4_data->f01_ctrl_base_addr,
-			&device_ctrl,
-			sizeof(device_ctrl));
-	if (retval < 0) {
-		tp_log_err("%s: Failed to enter sleep mode\n",
-				__func__);
-		return retval;
-	}
-/*delete some lines*/
-	return 0;
-}
 static void synaptics_put_device_into_easy_wakeup(struct device *dev,struct synaptics_rmi4_data *rmi4_data)
 {
 	int retval;
 	unsigned char device_ctrl;
-
-	unsigned char fast_relax;
-	unsigned char nosleep = NO_SLEEP_OFF;
 
 	tp_log_info("%s: in ",__func__);
 	if (true == rmi4_data->sleep_gesture_flag)
 	{
 		tp_log_debug( "%s gesture already enabled,return directly!\n", __func__);
 		return;
-	}
-	if (0 != rmi4_data->board->fast_relax_gesture)
-	{
-		if (0 == rmi4_data->fast_relax_normal)
-		{
-			/*Record synap original config,which will never be zero*/
-			retval = synaptics_rmi4_i2c_read(rmi4_data,
-					rmi4_data->f54_ctrl_base_addr+F54_ANALOG_CTRL13_OFFSET,
-					&fast_relax,
-					sizeof(fast_relax));
-			tp_log_debug( "%s fast_relax reg= 0x%04x\n", __func__,rmi4_data->f54_ctrl_base_addr+F54_ANALOG_CTRL13_OFFSET);
-			tp_log_debug( "%s fast_relax original= %d\n", __func__,fast_relax);
-			if (retval < 0) {
-				tp_log_err("%s: Failed to read reg(0x%04x),retval=%d\n",
-						__func__,rmi4_data->f54_ctrl_base_addr+F54_ANALOG_CTRL13_OFFSET,retval);
-			}
-			else{
-				rmi4_data->fast_relax_normal = fast_relax;
-			}
-		}
-		retval = synaptics_set_config_reg(rmi4_data,rmi4_data->board->fast_relax_gesture);
-		if (retval < 0) {
-			tp_log_err("%s: Failed to set config reg,retval=%d\n",
-					__func__,retval);
-		}
-	}
-	tp_log_debug("%s: glove_enabled=%d", __func__, rmi4_data->glove_enabled);
-	/*In easy wakeup mode,exit glove mode if app has enabled it */
-	if (RMI4_GLOV_FUNC_ENABLED == rmi4_data->glove_enabled)
-	{
-		/*TP will only response to finger in easy wakeup*/
-		retval = set_glove_mode(rmi4_data,SYSTEM_LOCKED_TO_SKIN_MODE);
-		if (retval < 0) {
-			tp_log_err("%s: Failed to set glove mode!retval=%d\n",
-					__func__,retval);
-		}
-	}
-	/*Exit holster mode in easy wakeup if app has enabled it */
-	if (true == rmi4_data->holster_enabled)
-	{
-		/*Exit holster mode in easy wakeup mode*/
-		retval = set_holster_mode(rmi4_data,RMI4_HOLSTER_FUNC_DISABLED);
-		if (retval < 0) {
-			tp_log_err("%s: Failed to exit holster mode\n",
-					__func__);
-		} else{
-			tp_log_info("%s: holster is Disabled!\n", __func__);
-		}
-	}
-	if(APP_ENABLE_GESTURE(GESTURE_DOUBLE_CLICK)&rmi4_data->easy_wakeup_gesture)
-	{
-		/* Write double-tap zone to F11_2D_CTRL92(01)/00~(01)/05*/
-		retval = set_effective_window(rmi4_data,&double_tap_info);
-		if (retval < 0)
-		{
-			tp_log_err("%s:double_tap_zone set error!ret = %d\n",__func__,retval);
-		}
-	}
-	/*Exit nosleep mode to reduce power_consumption*/
-	retval = synaptics_set_nosleep_mode(rmi4_data,nosleep);
-	if (retval < 0) {
-		tp_log_err("%s: Failed to set_nosleep_mode off,retval=%d\n",
-				__func__,retval);
 	}
 	retval = synaptics_rmi4_i2c_read(rmi4_data,
 			rmi4_data->f11_ctrl_base_addr,
@@ -5414,8 +4791,7 @@ static void synaptics_put_device_into_easy_wakeup(struct device *dev,struct syna
 
 	/*write 0100 to f11_ctrl_00 will not sleep but into gesture mode*/
 	device_ctrl = (device_ctrl & ~MASK_3BIT);
-	/* Into gesture mode */
-	device_ctrl = (device_ctrl | F11_GESTURE_MODE);
+	device_ctrl = (device_ctrl | 0x04);
 
 	retval = synaptics_rmi4_i2c_write(rmi4_data,
 			rmi4_data->f11_ctrl_base_addr,
@@ -5430,7 +4806,6 @@ static void synaptics_put_device_into_easy_wakeup(struct device *dev,struct syna
 	} else {
 		rmi4_data->sensor_sleep = true;
 	}
-/*delete some linse*/
 
 	if (device_may_wakeup(&rmi4_data->input_dev->dev)) 
 	{
@@ -5454,47 +4829,12 @@ static void synaptics_put_device_outof_easy_wakeup(struct device *dev,struct syn
 {
 	int retval;
 	unsigned char device_ctrl;
-	unsigned char command = 0x01;//write command=1 to reset IC
-	unsigned char nosleep = NO_SLEEP_ON;
 
 	tp_log_info("%s: in ",__func__);
 	if (false == rmi4_data->sleep_gesture_flag)
 	{
 		tp_log_debug( "%s gesture already disabled,return directly!\n", __func__);
 		return;
-	}
-	/* Reset to recalibrate TP */
-	mutex_lock(&(rmi4_data->rmi4_reset_mutex));
-	retval = synaptics_rmi4_i2c_write(rmi4_data,
-			rmi4_data->f01_cmd_base_addr,
-			&command,
-			sizeof(command));
-	if (retval < 0) {
-		tp_log_err("%s: Failed to issue reset command, error = %d\n",
-				__func__, retval);
-		mutex_unlock(&(rmi4_data->rmi4_reset_mutex));
-		return;
-	}
-	mutex_unlock(&(rmi4_data->rmi4_reset_mutex));
-
-	/* Waiting for reset finish */
-	msleep(20);
-
-	if (0 != rmi4_data->fast_relax_normal)
-	{
-		/*Write back synap original config*/
-		retval = synaptics_set_config_reg(rmi4_data,rmi4_data->fast_relax_normal);
-		if (retval < 0) {
-			tp_log_err("%s: Failed to set config reg,retval=%d\n",
-					__func__,retval);
-			return;
-		}
-	}
-	/*Enter nosleep mode to increase self_relax*/
-	retval = synaptics_set_nosleep_mode(rmi4_data,nosleep);
-	if (retval < 0) {
-		tp_log_err("%s: Failed to set_nosleep_mode on,retval=%d\n",
-				__func__,retval);
 	}
 	retval = synaptics_rmi4_i2c_read(rmi4_data,
 			rmi4_data->f11_ctrl_base_addr,
@@ -5512,8 +4852,6 @@ static void synaptics_put_device_outof_easy_wakeup(struct device *dev,struct syn
 	tp_log_debug("%s(line%d)Read device_ctrl=%d\n",__func__,__LINE__,device_ctrl);
 	/*write 0000 to f11_ctrl_00 will get into normal mode*/
 	device_ctrl = (device_ctrl & ~MASK_3BIT);
-	/* Into reduce mode which can reduce power consumption*/
-	device_ctrl = (device_ctrl | F11_REDUCE_MODE);
 
 	retval = synaptics_rmi4_i2c_write(rmi4_data,
 			rmi4_data->f11_ctrl_base_addr,
@@ -5538,7 +4876,7 @@ static void synaptics_put_device_outof_easy_wakeup(struct device *dev,struct syn
 			tp_log_debug( "%s disable irq wake!\n", __func__);
 			rmi4_data->sleep_gesture_flag = false;
 			synaptics_rmi4_irq_enable(rmi4_data, false);
-/* Delete useless log > */
+			tp_log_debug( "%s set gesture_enabled=%d\n", __func__,rmi4_data->gesture_enabled);
 		}
 	} else {
 		tp_log_debug( "%s disable irq wake fail!gesture_enabled=%d\n", __func__,rmi4_data->gesture_enabled);
@@ -5704,7 +5042,7 @@ static int synaptics_rmi4_suspend(struct device *dev)
 
 	if (rmi4_data->regulator)
 		regulator_disable(rmi4_data->regulator);
-	tp_log_info("%s: out\n",__func__);
+
 	return 0;
 }
 
@@ -5838,47 +5176,6 @@ static int synaptics_rmi4_rt_resume(struct device *dev)
 		return retval;
 	}
 
-	tp_log_debug("%s: glove_enabled=%d", __func__, rmi4_data->glove_enabled);
-	/*
-	 * If glove has been enabled by app before tp was sleep,
-	 * we should enable glove again when resume tp.
-	*/
-	if (RMI4_GLOV_FUNC_ENABLED == rmi4_data->glove_enabled)
-	{
-		if (true == rmi4_data->holster_enabled)
-		{
-			/*TP will only response to glove in holster mode*/
-			retval = set_glove_mode(rmi4_data,SYSTEM_LOCKED_TO_GLOVE_MODE);
-		}
-		else
-		{
-			/*TP will response to finger and glove,with finger default*/
-			retval = set_glove_mode(rmi4_data,SYSTEM_START_IN_SKIN_MODE);
-		}
-	}
-	/*
-	 * If holster has been enabled by app before tp was sleep,
-	 * we should enable holster again when resume tp,
-	 * in case that press power key times with holster covered .
-	*/
-	if (true == rmi4_data->holster_enabled)
-	{
-		/* Write holster window zone to F11_2D_CTRL92(01)/00~(01)/05*/
-		retval = set_effective_window(rmi4_data,&synap_holster_info);
-		if (retval < 0)
-		{
-			tp_log_err("%s:holster_zwindow_zone write error!ret = %d\n",
-					__func__,retval);
-		}
-		/*Enable holster mode*/
-		retval = set_holster_mode(rmi4_data,RMI4_HOLSTER_FUNC_ENABLED);
-		if (retval < 0) {
-			tp_log_err("%s: Failed to enter holster mode\n",
-					__func__);
-		} else{
-			tp_log_info("%s: holster is Enabled!\n", __func__);
-		}
-	}
 	mutex_lock(&exp_data.mutex);
 	if (!list_empty(&exp_data.list)) {
 		list_for_each_entry(exp_fhandler, &exp_data.list, link)

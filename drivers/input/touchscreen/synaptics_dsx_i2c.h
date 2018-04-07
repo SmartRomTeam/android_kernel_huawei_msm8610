@@ -79,7 +79,7 @@
 #define MASK_3BIT 0x07
 #define MASK_2BIT 0x03
 #define MASK_1BIT 0x01
-#define MASK_BIT3 0x04
+
 enum exp_fn {
 	RMI_DEV = 0,
 	RMI_F54,
@@ -213,9 +213,6 @@ struct synaptics_rmi4_device_info {
 
 
 #ifdef CONFIG_HUAWEI_KERNEL
-#define F54_ANALOG_CTRL13_OFFSET 16
-#define F11_2D_CTRL92_OFFSET 45
-#define F51_CUSTOM_CTRL63_OFFSET 14
 #define TP_ERR  1
 #define TP_INFO 2
 #define TP_DBG  3
@@ -323,21 +320,11 @@ struct synaptics_rmi4_data {
 	unsigned short f51_cmd_base_addr;
 	unsigned short f51_ctrl_base_addr;
 	unsigned short f51_data_base_addr;
-	unsigned short f54_query_base_addr;
-	unsigned short f54_cmd_base_addr;
-	unsigned short f54_ctrl_base_addr;
-	unsigned short f54_data_base_addr;
-	unsigned char fast_relax_normal;
 	struct mutex rmi4_sysfs_mutex;
-	struct mutex rmi4_holster_mutex;
-	struct mutex rmi4_glove_mutex;
-	struct mutex rmi4_window_mutex;
 	unsigned int easy_wakeup_gesture;
 	bool gesture_enabled;
-	/*delete some lines*/
 	bool palm_enabled;
 	bool glove_enabled;
-	bool holster_enabled;
 	bool sleep_gesture_flag;
 #endif /*CONFIG_HUAWEI_KERNEL*/
 };

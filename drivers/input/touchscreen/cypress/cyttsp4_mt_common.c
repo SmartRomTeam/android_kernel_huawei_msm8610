@@ -416,7 +416,9 @@ static void cyttsp4_mt_late_resume(struct early_suspend *h)
 	struct cyttsp4_mt_data *md =
 		container_of(h, struct cyttsp4_mt_data, es);
 	struct device *dev = &md->ttsp->dev;
-	tp_log_info( "Get into:%s\n", __func__);
+
+	tp_log_debug( "%s\n", __func__);
+
 #ifndef CONFIG_PM_RUNTIME
 	mutex_lock(&md->report_lock);
 	md->is_suspended = false;
@@ -443,26 +445,16 @@ static int fb_notifier_callback(struct notifier_block *self,
 	int *blank;
 	struct cyttsp4_mt_data *md =
 		container_of(self, struct cyttsp4_mt_data, fb_notif);
-	int state;
+
     tp_log_debug("%s\n", __func__);
 
 	if (evdata && evdata->data && event == FB_EVENT_BLANK &&
 		md && md->ttsp) {
 		blank = evdata->data;
-		/*get the power state of core, 0 is sleep, 1 is wakeup*/
-		state = cyttsp4_request_power_state(md->ttsp);
-		tp_log_info("%s state=%d\n", __func__, state);
-		if (*blank == FB_BLANK_UNBLANK && md->is_suspended == true) {
-			if (!state)
-				cyttsp4_mt_resume(&(md->ttsp->dev));
-			else
-				tp_log_err("%s:resume request for working device\n", __func__);
-		} else if (*blank == FB_BLANK_POWERDOWN) {
-			if (state)
-				cyttsp4_mt_suspend(&(md->ttsp->dev));
-			else
-				tp_log_err("%s:suspend request for suspended device\n", __func__);
-		}
+		if (*blank == FB_BLANK_UNBLANK && md->is_suspended == true)
+			cyttsp4_mt_resume(&(md->ttsp->dev));
+		else if (*blank == FB_BLANK_POWERDOWN)
+			cyttsp4_mt_suspend(&(md->ttsp->dev));
 	}
     
 	return 0;
@@ -500,12 +492,8 @@ static int cyttsp4_mt_suspend(struct device *dev)
     tp_log_debug( "%s\n begin", __func__);
 
     /* put runtime to let the TP to sleep */
-	/*The counter should not be 0 here, if its 0 means its already suspended*/
-	tp_log_info("%s %d:power.usage_count.counter = %d.\n", __func__, __LINE__, dev->power.usage_count.counter);
-	if (dev->power.usage_count.counter)
-		pm_runtime_put_sync(dev);
-	else
-		tp_log_err("%s FATAL:suspend request for suspended device\n", __func__);
+	pm_runtime_put(dev);
+
 	return 0;
 
 }
@@ -530,8 +518,8 @@ static int cyttsp4_mt_rt_resume(struct device *dev)
 {
 	struct cyttsp4_mt_data *md = dev_get_drvdata(dev);
 
-	tp_log_info( "Get into:%s\n", __func__);
-	
+	tp_log_debug( "%s\n", __func__);
+
 	mutex_lock(&md->report_lock);
 	md->is_suspended = false;
 	mutex_unlock(&md->report_lock);
@@ -543,7 +531,8 @@ static int cyttsp4_mt_resume(struct device *dev)
 {
 
 	//struct cyttsp4_mt_data *md = dev_get_drvdata(dev);
-	tp_log_info( "%s  begin\n", __func__);
+
+	tp_log_debug( "%s  begin\n", __func__);
  /*
 	mutex_lock(&md->report_lock);
 	md->is_suspended = false;
@@ -551,7 +540,7 @@ static int cyttsp4_mt_resume(struct device *dev)
 */
    
     /* get a runtime to make tp working */
-	pm_runtime_get_sync(dev);
+	pm_runtime_get(dev);
 
     /* delete pm_runtime_get function here */
 	return 0;
