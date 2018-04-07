@@ -89,8 +89,7 @@
 #define CY_CORE_WAKEUP_TIMEOUT			1000 //hyuc
 
 #define CY_CORE_STARTUP_RETRY_COUNT		3
-/*modify the way that watchdog check the ic state*/
-#define CYTTSP4_WATCHDOG_NULL_CMD 
+
 /* add a parameter for the module */
 int cyttsp_debug_mask = TP_INFO;
 module_param_named(cyttsp_debug_mask, cyttsp_debug_mask, int, 0664);
@@ -471,21 +470,6 @@ static int cyttsp4_toggle_low_power_(struct cyttsp4_core_data *cd, u8 mode)
 			"%s: bus write fail on toggle low power (ret=%d)\n",
 			__func__, rc);
 	return rc;
-}
-
-static int cyttsp4_power_state(struct cyttsp4_core_data *cd)
-{
-	int ret = 0;
-	
-	tp_log_info("Get into:%s.\n", __func__);
-	mutex_lock(&cd->system_lock);
-	if (cd->sleep_state == SS_SLEEP_ON)
-		ret = 0;
-	else
-		ret = 1;
-	mutex_unlock(&cd->system_lock);
-
-	return ret;
 }
 
 static int cyttsp4_toggle_low_power(struct cyttsp4_core_data *cd, u8 mode)
@@ -1897,18 +1881,6 @@ static int cyttsp4_request_toggle_lowpower_(struct cyttsp4_device *ttsp,
 	return rc;
 }
 
-static int cyttsp4_request_power_state_(struct cyttsp4_device *ttsp)
-{
-	struct cyttsp4_core *core = ttsp->core;
-	struct cyttsp4_core_data *cd = dev_get_drvdata(&core->dev);
-	int rc = cyttsp4_power_state(cd);
-	tp_log_info("Get into:%s.\n", __func__);
-	if (rc == 0)
-		tp_log_debug( "%s: device is in sleeping state r=%d\n",
-				__func__, rc);
-	return rc;
-}
-
 static int _cyttsp4_wait_cmd_exec(struct cyttsp4_core_data *cd, int timeout_ms)
 {
 	int rc;
@@ -2889,12 +2861,8 @@ static int cyttsp4_core_sleep_(struct cyttsp4_core_data *cd)
 	cyttsp4_stop_wd_timer(cd);
 
 	/* Wait until currently running IRQ handler exits and disable IRQ */
-	if (cd->irq_enabled) {
-		tp_log_info("disable_irq:%s, at line:%d.\n", __func__, __LINE__);
-		cd->irq_enabled = false;
-		disable_irq(cd->irq);
-	}
-	
+	disable_irq(cd->irq);
+
 	mutex_lock(&cd->system_lock);
 	/* Already in sleep mode? */
 	if (cd->sleep_state == SS_SLEEP_ON)
@@ -2919,19 +2887,10 @@ static int cyttsp4_core_sleep_(struct cyttsp4_core_data *cd)
 		tp_log_err( "%s: Device is not in Operating mode (%02X)\n",
 			__func__, GET_HSTMODE(mode[0]));
 		mutex_unlock(&cd->system_lock);
-		if (!cd->irq_enabled) {
-			tp_log_info("enable_irq:%s, at line:%d.\n", __func__, __LINE__);
-			cd->irq_enabled = true;
-			enable_irq(cd->irq);
-		}
+		enable_irq(cd->irq);
 		/* Try switching to Operating mode */
 		rc = set_mode(cd, CY_MODE_OPERATIONAL);
-
-		if (cd->irq_enabled) {
-			tp_log_info("disable_irq:%s, at line:%d.\n", __func__, __LINE__);
-			cd->irq_enabled = false;
-			disable_irq(cd->irq);
-		}
+		disable_irq(cd->irq);
 		mutex_lock(&cd->system_lock);
 		if (rc < 0) {
 			tp_log_err( "%s: failed to set mode to Operational rc=%d\n",
@@ -3496,7 +3455,6 @@ static int cyttsp4_core_rt_suspend(struct device *dev)
 	struct cyttsp4_core_data *cd = dev_get_drvdata(dev);
 	int rc;
 
-	tp_log_info("Get into:%s, at line:%d.\n", __func__, __LINE__);
 	rc = cyttsp4_core_sleep(cd);
 	if (rc < 0) {
 		tp_log_err( "%s: Error on sleep\n", __func__);
@@ -3511,11 +3469,7 @@ static int cyttsp4_core_rt_resume(struct device *dev)
 	int rc;
 
     /* enable irq before tp wakeup */
-	if (!cd->irq_enabled) {
-		tp_log_info("enable_irq:%s, at line:%d.\n", __func__, __LINE__);
-		cd->irq_enabled = true;
-		enable_irq(cd->irq);
-	}
+	enable_irq(cd->irq);
 
 	rc = cyttsp4_core_wake(cd);
 	if (rc < 0) {
@@ -3543,11 +3497,8 @@ static int cyttsp4_core_suspend(struct device *dev)
 	 * This will not prevent resume
 	 * Required to prevent interrupts before i2c awake
 	 */
-	if (cd->irq_enabled) {
-		cd->irq_enabled = false;
-		disable_irq(cd->irq);
-	}
-	
+	disable_irq(cd->irq);
+
 	if (device_may_wakeup(dev)) {
 		tp_log_debug( "%s Device MAY wakeup\n", __func__);
 		if (!enable_irq_wake(cd->irq))
@@ -3570,11 +3521,8 @@ static int cyttsp4_core_resume(struct device *dev)
 	if (!(cd->pdata->flags & CY_CORE_FLAG_WAKE_ON_GESTURE))
 		return 0;
 
-	if (!cd->irq_enabled) {
-		cd->irq_enabled = true;
-		enable_irq(cd->irq);
-	}
-	
+	enable_irq(cd->irq);
+
 	if (device_may_wakeup(dev)) {
 		tp_log_debug( "%s Device MAY wakeup\n", __func__);
 		if (cd->irq_wake) {
@@ -4543,7 +4491,6 @@ static struct cyttsp4_core_driver cyttsp4_core_driver = {
 	.request_exec_cmd = cyttsp4_request_exec_cmd_,
 	.request_stop_wd = cyttsp4_request_stop_wd_,
 	.request_toggle_lowpower = cyttsp4_request_toggle_lowpower_,
-	.request_power_state = cyttsp4_request_power_state_,
 	.request_config_row_size = cyttsp4_request_config_row_size_,
 	.request_write_config = cyttsp4_request_write_config_,
 	.request_enable_scan_type = cyttsp4_request_enable_scan_type_,

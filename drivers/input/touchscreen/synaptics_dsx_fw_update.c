@@ -291,6 +291,7 @@ struct synaptics_rmi4_fwu_handle {
 	struct synaptics_rmi4_access_ptr *fn_ptr;
 	struct synaptics_rmi4_data *rmi4_data;
 };
+
 /*Add for CTS*/
 static struct bin_attribute dev_attr_data = {
 	.attr = {
@@ -1321,6 +1322,7 @@ typedef enum
    TP_COF_ID_TRULY = 0x0003, //ID1 float , ID0  low
    TP_COF_ID_OTHER = 0x0000, //ID0 float , ID1  float
 }hw_tp_id_index;
+
 static char * get_cof_module_name(u8 module_id)
 {
 #if 0
@@ -1403,6 +1405,7 @@ exit:
 	return;
 }
 #endif /*CONFIG_HUAWEI_KERNEL*/
+
 static int fwu_start_reflash(void)
 {
 	int retval = 0;
@@ -1541,12 +1544,13 @@ exit:
 	tp_log_debug("%s(line %d):fwu_scan_pdt ,retval=%d",__func__,__LINE__,retval);
 	if (retval < 0)
 		return retval;
-
+	
 	synaptics_set_appinfo();
 #endif /*CONFIG_HUAWEI_KERNEL*/
 
 	return retval;
 }
+
 int synaptics_fw_updater(unsigned char *fw_data)
 {
 	int retval;
@@ -1802,6 +1806,7 @@ static void synaptics_rmi4_fwu_attn(struct synaptics_rmi4_data *rmi4_data,
 
 	return;
 }
+
 static void fwu_get_fw_name(void)
 {
 	int retval;
@@ -1848,6 +1853,7 @@ exit:
 
 	return;
 }
+
 static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 {
 	int retval;
@@ -1889,6 +1895,7 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 		retval = -ENOMEM;
 		goto exit_free_fn_ptr;
 	}
+
 	fwu->rmi4_data = rmi4_data;
 	fwu->fn_ptr->read = rmi4_data->i2c_read;
 	fwu->fn_ptr->write = rmi4_data->i2c_write;
@@ -1930,6 +1937,7 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 			__func__, fwu->product_id);
 
 	fwu_get_fw_name();
+
 	retval = fwu_read_f34_queries();
 	if (retval < 0)
 		goto exit_free_mem;

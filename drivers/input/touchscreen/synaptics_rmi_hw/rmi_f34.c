@@ -32,6 +32,8 @@
 #include <asm/system.h>
 #include <rmi_config.h>
 #include <misc/app_info.h>
+/*Add for aging test*/
+#include <linux/hw_tp_common.h>
 
 #define TP_FW_COB_FILE_NAME  "/tp/1191601.img"
 #define TP_FW_FILE_NAME "/sdcard/update/synaptics.img"
@@ -1083,7 +1085,8 @@ static int register_update_firmware_node(struct rmi_function_container *fc)
 {
 	int ret;
 	struct kobject *kobject_ts;
-	kobject_ts = kobject_create_and_add("touch_screen", NULL);
+/*Add for aging test*/
+	kobject_ts = tp_get_touch_screen_obj();
 	if (!kobject_ts)
 	{
 		printk("create kobjetct error!\n");
