@@ -24,7 +24,8 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/input.h>
-#include <linux/input/synaptics_dsx.h>
+/*Add for aging test*/
+#include <linux/synaptics_dsx.h>
 #include "synaptics_dsx_i2c.h"
 
 #define DRIVER_NAME "synaptics_dsx_i2c"
@@ -59,11 +60,12 @@ static ssize_t synaptics_rmi4_prox_general_control_show(struct device *dev,
 static ssize_t synaptics_rmi4_prox_general_control_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
 
+/*Add for CTS*/
 static struct device_attribute attrs[] = {
-	__ATTR(proximity_enables, (S_IRUGO | S_IWUGO),
+	__ATTR(proximity_enables, (S_IRUGO | S_IWUSR|S_IWGRP),
 			synaptics_rmi4_prox_enables_show,
 			synaptics_rmi4_prox_enables_store),
-	__ATTR(general_control, (S_IRUGO | S_IWUGO),
+	__ATTR(general_control, (S_IRUGO | S_IWUSR|S_IWGRP),
 			synaptics_rmi4_prox_general_control_show,
 			synaptics_rmi4_prox_general_control_store),
 };

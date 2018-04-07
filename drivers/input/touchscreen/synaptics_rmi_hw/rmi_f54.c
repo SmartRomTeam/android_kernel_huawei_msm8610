@@ -25,6 +25,8 @@
 
 #include "rmi_config.h"
 #include <linux/hw_tp_config.h>
+/*Add for aging test*/
+#include <linux/hw_tp_common.h>
 
 #define RX_NUMBER 44  //f01 control_base_addr + 44
 #define TX_NUMBER 45  //f01 control_base_addr + 45
@@ -636,6 +638,85 @@ static ssize_t rmi_f54_mmi_test_show(struct device * dev,struct device_attribute
 		+strlen(g_highresistance_report)+ strlen(g_maxmincapacitance_report)
 		+strlen(g_RxtoRxshort_report);
 	return len;	
+}
+
+/*Add for aging test*/
+struct device *f54_dev = NULL;
+
+/*move to hw_tp_common.c*/
+static ssize_t hw_synaptics_mmi_test_store(struct kobject *kobj,
+		struct kobj_attribute *attr, const char *buf, size_t size)
+{
+	struct device *dev = f54_dev;//container_of(kobj, struct device, kobj);
+
+	if (!dev){
+		printk("%s: device is null", __func__);
+		return -EINVAL;
+	}
+	return rmi_f54_mmi_test_store(dev, NULL, buf, size);
+}
+
+static ssize_t hw_synaptics_mmi_test_result_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	struct device *dev = f54_dev;//container_of(kobj, struct device, kobj);
+	
+	if (!dev){
+		printk("%s: device is null", __func__);
+		return -EINVAL;
+	}
+	return rmi_f54_mmi_test_show(dev, NULL, buf);
+}
+
+static struct kobj_attribute synaptics_mmi_test = {
+	.attr = {.name = "synaptics_mmi_test", .mode = 0664},
+	.show = NULL,
+	.store = hw_synaptics_mmi_test_store,
+};
+
+static struct kobj_attribute synaptics_mmi_test_result = {
+	.attr = {.name = "synaptics_mmi_test_result", .mode = 0444},
+	.show = hw_synaptics_mmi_test_result_show,
+	.store = NULL,
+};
+
+static int add_huawei_mmi_test_interfaces(struct device *dev)
+{
+	int error = 0;
+	static int flag = 0;
+	struct kobject *properties_kobj;
+
+	if(0 != flag){
+		return 0;
+	}
+	f54_dev = dev;
+
+	properties_kobj = tp_get_touch_screen_obj();
+	if( NULL == properties_kobj )
+	{
+		printk("%s: Error, get kobj failed!\n", __func__);
+		return -1;
+	}
+
+	/*add the node synaptics_mmi_test_result for apk to read*/
+	error = sysfs_create_file(properties_kobj, &synaptics_mmi_test_result.attr);
+	if (error)
+	{
+		kobject_put(properties_kobj);
+		printk("%s: synaptics_mmi_test_result create file error = %d\n", __func__,error);
+		return -ENODEV;
+	}
+
+	/*add the node synaptics_mmi_test apk to write*/
+	error = sysfs_create_file(properties_kobj, &synaptics_mmi_test.attr);
+	if (error)
+	{
+		kobject_put(properties_kobj);
+		printk("%s: synaptics_mmi_test create file error\n", __func__);
+		return -ENODEV;
+	}
+	flag = 1;
+	return 0;
 }
 
 static void mmi_rawcapacitance_test(struct device *dev,size_t count)
@@ -1331,6 +1412,15 @@ static int rmi_f54_create_sysfs(struct rmi_function_container *fc)
 					"(error = %d).\n", rc);
 		return -ENODEV;
 	}
+
+/*Add for aging test*/
+	rc = add_huawei_mmi_test_interfaces(&fc->dev);
+	if (rc < 0) {
+		dev_err(&fc->dev, "%s: Error, synaptics_mmi_test init sysfs fail! \n",
+			__func__);
+		return -ENODEV;
+	}
+
 	return 0;
 
 err_remove_sysfs:
